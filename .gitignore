@@ -1,0 +1,97 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code related
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio related
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+
+# Generated files
+*.g.dart
+*.freezed.dart
+
+# Web related
+lib/generated_plugin_registrant.dart
+
+# Native build artifacts
+**/android/app/.cxx/
+
+# ============================================
+# SECURITY - Never commit these files!
+# ============================================
+
+# Signing keys
+**/android/key.properties
+**/android/app/keystore/
+*.keystore
+*.jks
+
+# Environment files
+.env
+.env.*
+*.env
+
+# API keys and secrets
+secrets.dart
+secrets.json
+google-services.json
+
+# ============================================
+# Build outputs
+# ============================================
+**/build/
+*.apk
+*.aab
+*.ipa
+
+# External dependencies
+/external/
+
+# Test outputs
+coverage/
+test-results/
+.test_coverage/
+
+# Local configuration
+local.properties
+
+# Gradle caches
+.gradle/
+android/.gradle/

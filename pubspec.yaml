@@ -1,0 +1,80 @@
+name: micro_llm_app
+description: Offline-first multilingual conversational assistant with on-device LLM.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+  flutter: '>=3.16.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_bloc: ^8.1.3
+  equatable: ^2.0.5
+
+  # Dependency Injection
+  get_it: ^7.6.4
+  injectable: ^2.3.2
+
+  # FFI for native llama.cpp binding
+  ffi: ^2.1.0
+
+  # Local Storage
+  path_provider: ^2.1.1
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  
+  # Security
+  flutter_secure_storage: ^9.0.0
+  crypto: ^3.0.3
+
+  # Networking (only for model download)
+  dio: ^5.4.0
+
+  # Utilities
+  rxdart: ^0.27.7
+  dartz: ^0.10.1
+  logger: ^2.0.2
+  uuid: ^4.2.1
+  intl: ^0.18.1
+  
+  # UI Components
+  flutter_markdown: ^0.6.18
+  shimmer: ^3.0.0
+  just_audio: ^0.9.46
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  
+  # Code Generation
+  injectable_generator: ^2.4.1
+  build_runner: ^2.4.7
+  hive_generator: ^2.0.1
+  
+  # Testing
+  bloc_test: ^9.1.5
+  mocktail: ^1.0.1
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/fonts/
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700

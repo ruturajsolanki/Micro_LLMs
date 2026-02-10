@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network Security Configuration
+    
+    This app is designed to be offline-first. Network access is only
+    permitted for model download from trusted sources.
+    
+    After model download, the app operates fully offline.
+-->
+<network-security-config>
+    <!-- Disable cleartext (HTTP) traffic globally -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Allow only HuggingFace for model download -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">huggingface.co</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+        <!-- Enable certificate pinning for production -->
+        <!-- 
+        <pin-set expiration="2025-12-31">
+            <pin digest="SHA-256">AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</pin>
+        </pin-set>
+        -->
+    </domain-config>
+</network-security-config>

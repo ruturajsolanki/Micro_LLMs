@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    AndroidManifest.xml for MicroLLM
+    
+    Key permissions:
+    - RECORD_AUDIO: For speech-to-text functionality
+    - INTERNET: Only for initial model download (can be removed after)
+    - FOREGROUND_SERVICE: For long-running model operations
+    
+    Security notes:
+    - No analytics or tracking permissions
+    - No location permissions
+    - No contacts or personal data access
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Network permission for model download only -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- Audio permission for speech-to-text -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    
+    <!-- Foreground service for long model operations -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    
+    <!-- Keep screen on during inference (optional) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Declare features as optional for wider compatibility -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    
+    <application
+        android:label="MicroLLM"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:largeHeap="true"
+        android:hardwareAccelerated="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:requestLegacyExternalStorage="false">
+        
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            
+            <!-- Deep linking (optional) -->
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+        </activity>
+        
+        <!-- Foreground service for model loading -->
+        <service
+            android:name=".ModelLoadService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Model inference for offline AI assistant" />
+        </service>
+        
+        <!-- Don't back up the large model file -->
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version" />
+            
+        <!-- Required for Flutter -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+    
+    <!-- Queries for speech recognition -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+</manifest>
