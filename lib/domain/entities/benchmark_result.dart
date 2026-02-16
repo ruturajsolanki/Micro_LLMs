@@ -1,5 +1,8 @@
 import 'package:equatable/equatable.dart';
 
+import 'evaluation_result.dart';
+import 'safety_result.dart';
+
 /// Qualitative score for a benchmark dimension.
 enum BenchmarkScore {
   good,
@@ -54,10 +57,10 @@ class BenchmarkDimension extends Equatable {
   List<Object?> get props => [name, description, score, explanation];
 }
 
-/// Complete benchmark result including summary and evaluation scores.
+/// Complete benchmark result including summary, evaluation scores, and safety info.
 ///
 /// Produced by the [SummarizeTranscriptUseCase] pipeline after recording,
-/// transcription, summarization, and evaluation.
+/// transcription, safety scan, summarization, and evaluation.
 class BenchmarkResult extends Equatable {
   /// The original transcript from voice recording.
   final String transcript;
@@ -68,7 +71,7 @@ class BenchmarkResult extends Equatable {
   /// The generated summary.
   final String summary;
 
-  /// Individual benchmark dimension scores.
+  /// Individual benchmark dimension scores (summarization quality rubric).
   final List<BenchmarkDimension> dimensions;
 
   /// Duration of the recording in seconds.
@@ -83,6 +86,12 @@ class BenchmarkResult extends Equatable {
   /// When the benchmark was completed.
   final DateTime completedAt;
 
+  /// Safety scan result. Non-null when the safety pipeline ran.
+  final SafetyResult? safetyResult;
+
+  /// Evaluation result (Clarity + Language scoring). Non-null when evaluation ran.
+  final EvaluationResult? evaluationResult;
+
   const BenchmarkResult({
     required this.transcript,
     required this.keyIdeas,
@@ -92,7 +101,17 @@ class BenchmarkResult extends Equatable {
     required this.processingTimeMs,
     required this.promptUsed,
     required this.completedAt,
+    this.safetyResult,
+    this.evaluationResult,
   });
+
+  /// Whether the content was flagged as unsafe.
+  bool get isSafetyFlagged =>
+      safetyResult != null && !safetyResult!.isSafe;
+
+  /// Whether evaluation scores are available and should be shown.
+  bool get hasEvaluation =>
+      evaluationResult != null && !evaluationResult!.safetyFlag;
 
   /// Overall score (average of dimension numeric values).
   double get overallScore {
@@ -138,5 +157,7 @@ class BenchmarkResult extends Equatable {
         processingTimeMs,
         promptUsed,
         completedAt,
+        safetyResult,
+        evaluationResult,
       ];
 }

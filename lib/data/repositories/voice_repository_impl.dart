@@ -117,6 +117,7 @@ class VoiceRepositoryImpl with Loggable implements VoiceRepository {
         return _whisperDataSource.startRecognition(
           language: language,
           translateToEnglish: false,
+          continuous: continuous,
         );
     }
   }

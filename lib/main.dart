@@ -12,6 +12,7 @@ import 'presentation/pages/onboarding_page.dart';
 import 'presentation/pages/settings_page.dart';
 import 'presentation/pages/device_compatibility_page.dart';
 import 'presentation/pages/benchmark_page.dart';
+import 'presentation/pages/system_prompts_page.dart';
 import 'presentation/theme/app_theme.dart';
 
 /// Application entry point.
@@ -123,6 +124,11 @@ class MicroLLMApp extends StatelessWidget {
       case '/benchmark':
         return MaterialPageRoute(
           builder: (_) => const BenchmarkPage(),
+        );
+
+      case '/system-prompts':
+        return MaterialPageRoute(
+          builder: (_) => const SystemPromptsPage(),
         );
       
       default:

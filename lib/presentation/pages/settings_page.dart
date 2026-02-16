@@ -235,6 +235,13 @@ class SettingsPage extends StatelessWidget {
                     onTap: () => Navigator.pushNamed(context, '/benchmark'),
                   ),
                   ListTile(
+                    title: const Text('System Prompts'),
+                    subtitle: const Text('Edit evaluation, safety & injection prompts'),
+                    leading: const Icon(Icons.tune_rounded),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pushNamed(context, '/system-prompts'),
+                  ),
+                  ListTile(
                     title: const Text('Device Compatibility'),
                     subtitle: const Text('Check which models work on your device'),
                     leading: const Icon(Icons.memory_outlined),

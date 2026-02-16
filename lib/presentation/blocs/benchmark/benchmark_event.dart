@@ -128,6 +128,20 @@ final class BenchmarkEvaluationToggled extends BenchmarkEvent {
   const BenchmarkEvaluationToggled();
 }
 
+/// Toggle transcript evaluation (Clarity + Language) on/off.
+final class BenchmarkTranscriptEvalToggled extends BenchmarkEvent {
+  const BenchmarkTranscriptEvalToggled();
+}
+
+/// Safety scan blocked the pipeline (internal).
+final class BenchmarkSafetyBlocked extends BenchmarkEvent {
+  final SafetyResult safetyResult;
+  const BenchmarkSafetyBlocked({required this.safetyResult});
+
+  @override
+  List<Object> get props => [safetyResult];
+}
+
 /// Reset to idle state.
 final class BenchmarkReset extends BenchmarkEvent {
   const BenchmarkReset();

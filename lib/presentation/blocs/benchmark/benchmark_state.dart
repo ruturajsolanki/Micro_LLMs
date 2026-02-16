@@ -13,11 +13,14 @@ enum BenchmarkStatus {
 
   /// Results are available.
   result,
+
+  /// Pipeline halted due to safety violation.
+  safetyBlocked,
 }
 
 /// State for the benchmark flow.
 ///
-/// Tracks the full lifecycle: idle → recording → processing → result.
+/// Tracks the full lifecycle: idle → recording → processing → result/safetyBlocked.
 class BenchmarkState extends Equatable {
   static const Object _unset = Object();
 
@@ -52,11 +55,19 @@ class BenchmarkState extends Equatable {
   /// Final benchmark result, set when pipeline completes.
   final BenchmarkResult? result;
 
-  /// Whether benchmark evaluation scoring is enabled.
+  /// Whether summary quality benchmark evaluation scoring is enabled.
   ///
   /// When false, the pipeline skips the rubric evaluation step and only
   /// produces a summary + key ideas (faster, fewer LLM calls).
   final bool benchmarkEnabled;
+
+  /// Whether transcript evaluation (Clarity + Language) is enabled.
+  ///
+  /// When true, the pipeline runs the strict scoring rubric on the transcript.
+  final bool evaluationEnabled;
+
+  /// Safety result when content is flagged (non-null in safetyBlocked status).
+  final SafetyResult? safetyResult;
 
   /// Error message, if any.
   final String? errorMessage;
@@ -73,6 +84,8 @@ class BenchmarkState extends Equatable {
     this.currentStep,
     this.result,
     this.benchmarkEnabled = false,
+    this.evaluationEnabled = true,
+    this.safetyResult,
     this.errorMessage,
   });
 
@@ -97,6 +110,8 @@ class BenchmarkState extends Equatable {
     Object? currentStep = _unset,
     Object? result = _unset,
     bool? benchmarkEnabled,
+    bool? evaluationEnabled,
+    Object? safetyResult = _unset,
     Object? errorMessage = _unset,
   }) {
     return BenchmarkState(
@@ -117,6 +132,10 @@ class BenchmarkState extends Equatable {
           ? this.result
           : result as BenchmarkResult?,
       benchmarkEnabled: benchmarkEnabled ?? this.benchmarkEnabled,
+      evaluationEnabled: evaluationEnabled ?? this.evaluationEnabled,
+      safetyResult: identical(safetyResult, _unset)
+          ? this.safetyResult
+          : safetyResult as SafetyResult?,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
@@ -127,6 +146,7 @@ class BenchmarkState extends Equatable {
   bool get isRecording => status == BenchmarkStatus.recording;
   bool get isProcessing => status == BenchmarkStatus.processing;
   bool get hasResult => status == BenchmarkStatus.result && result != null;
+  bool get isSafetyBlocked => status == BenchmarkStatus.safetyBlocked;
 
   /// Formatted recording duration (MM:SS).
   String get formattedDuration {
@@ -155,6 +175,8 @@ class BenchmarkState extends Equatable {
         currentStep,
         result,
         benchmarkEnabled,
+        evaluationEnabled,
+        safetyResult,
         errorMessage,
       ];
 }

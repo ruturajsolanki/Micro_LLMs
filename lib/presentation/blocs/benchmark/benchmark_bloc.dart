@@ -5,6 +5,7 @@ import 'package:equatable/equatable.dart';
 
 import '../../../domain/entities/benchmark_result.dart';
 import '../../../domain/entities/benchmark_prompt.dart';
+import '../../../domain/entities/safety_result.dart';
 import '../../../domain/entities/speech_to_text_engine.dart';
 import '../../../domain/usecases/summarize_transcript_usecase.dart';
 import '../../../domain/usecases/speech_to_text_usecase.dart';
@@ -53,6 +54,8 @@ class BenchmarkBloc extends Bloc<BenchmarkEvent, BenchmarkState> with Loggable {
     on<BenchmarkPromptSelected>(_onPromptSelected);
     on<BenchmarkPromptsRefreshed>(_onPromptsRefreshed);
     on<BenchmarkEvaluationToggled>(_onEvaluationToggled);
+    on<BenchmarkTranscriptEvalToggled>(_onTranscriptEvalToggled);
+    on<BenchmarkSafetyBlocked>(_onSafetyBlocked);
     on<BenchmarkReset>(_onReset);
   }
 
@@ -171,6 +174,7 @@ class BenchmarkBloc extends Bloc<BenchmarkEvent, BenchmarkState> with Loggable {
       prompt: state.selectedPrompt,
       recordingDurationSeconds: state.recordingDurationSeconds,
       includeBenchmark: state.benchmarkEnabled,
+      includeEvaluation: state.evaluationEnabled,
     );
 
     _pipelineSubscription =
@@ -183,6 +187,8 @@ class BenchmarkBloc extends Bloc<BenchmarkEvent, BenchmarkState> with Loggable {
             add(BenchmarkPipelineStepCompleted(step: step, result: result));
           case PipelineCompleted(:final result):
             add(BenchmarkPipelineCompleted(result: result));
+          case PipelineSafetyBlocked(:final safetyResult):
+            add(BenchmarkSafetyBlocked(safetyResult: safetyResult));
           case PipelineError(:final message, :final failedStep):
             add(BenchmarkPipelineError(
                 message: message, failedStep: failedStep));
@@ -313,6 +319,28 @@ class BenchmarkBloc extends Bloc<BenchmarkEvent, BenchmarkState> with Loggable {
     emit(state.copyWith(benchmarkEnabled: !state.benchmarkEnabled));
   }
 
+  void _onTranscriptEvalToggled(
+    BenchmarkTranscriptEvalToggled event,
+    Emitter<BenchmarkState> emit,
+  ) {
+    emit(state.copyWith(evaluationEnabled: !state.evaluationEnabled));
+  }
+
+  void _onSafetyBlocked(
+    BenchmarkSafetyBlocked event,
+    Emitter<BenchmarkState> emit,
+  ) {
+    AppLogger.w(
+      'Pipeline halted: safety violation detected — '
+      '${event.safetyResult.summary}',
+    );
+    emit(state.copyWith(
+      status: BenchmarkStatus.safetyBlocked,
+      safetyResult: event.safetyResult,
+      currentStep: null,
+    ));
+  }
+
   void _onReset(BenchmarkReset event, Emitter<BenchmarkState> emit) {
     _pipelineSubscription?.cancel();
     _sttSubscription?.cancel();
@@ -325,6 +353,7 @@ class BenchmarkBloc extends Bloc<BenchmarkEvent, BenchmarkState> with Loggable {
       liveTranscript: '',
       recordingDurationSeconds: 0,
       result: null,
+      safetyResult: null,
       completedSteps: [],
       currentStep: null,
       errorMessage: null,

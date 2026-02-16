@@ -30,7 +30,12 @@ import '../../domain/usecases/text_to_speech_usecase.dart';
 import '../../domain/usecases/download_model_usecase.dart';
 import '../../domain/usecases/load_model_usecase.dart';
 import '../../domain/usecases/summarize_transcript_usecase.dart';
+import '../../domain/usecases/safety_preprocessor_usecase.dart';
+import '../../domain/usecases/evaluation_usecase.dart';
+import '../../domain/services/system_prompt_manager.dart';
+import '../../domain/services/prompt_security_layer.dart';
 import '../../data/datasources/benchmark_storage.dart';
+import '../../data/datasources/system_prompt_storage_impl.dart';
 import '../../presentation/blocs/chat/chat_bloc.dart';
 import '../../presentation/blocs/settings/settings_bloc.dart';
 import '../../presentation/blocs/model/model_bloc.dart';
@@ -197,15 +202,53 @@ Future<void> initializeDependencies() async {
   );
   
   sl.registerLazySingleton(
-    () => SummarizeTranscriptUseCase(llmRepository: sl()),
+    () => SummarizeTranscriptUseCase(
+      llmRepository: sl(),
+      safetyPreprocessor: sl(),
+      evaluationUseCase: sl(),
+    ),
   );
 
   // ============================================================
-  // DATA SOURCES (benchmark)
+  // DATA SOURCES (benchmark & evaluation)
   // ============================================================
 
   sl.registerLazySingleton(
     () => BenchmarkStorage(settingsBox: sl(instanceName: 'settingsBox')),
+  );
+
+  sl.registerLazySingleton<SystemPromptStorage>(
+    () => SystemPromptStorageImpl(settingsBox: sl(instanceName: 'settingsBox')),
+  );
+
+  // ============================================================
+  // DOMAIN SERVICES (evaluation & safety)
+  // ============================================================
+
+  sl.registerLazySingleton(
+    () => SystemPromptManager(storage: sl()),
+  );
+
+  sl.registerLazySingleton(
+    () => PromptSecurityLayer(
+      promptManager: sl(),
+      llmRepository: sl(),
+    ),
+  );
+
+  sl.registerLazySingleton(
+    () => SafetyPreprocessorUseCase(
+      llmRepository: sl(),
+      promptManager: sl(),
+      securityLayer: sl(),
+    ),
+  );
+
+  sl.registerLazySingleton(
+    () => EvaluationUseCase(
+      llmRepository: sl(),
+      promptManager: sl(),
+    ),
   );
   
   // ============================================================

@@ -6,6 +6,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/di/injection.dart';
 import '../../domain/entities/benchmark_result.dart';
 import '../../domain/entities/benchmark_prompt.dart';
+import '../../domain/entities/evaluation_result.dart';
+import '../../domain/entities/safety_result.dart';
 import '../../domain/usecases/summarize_transcript_usecase.dart';
 import '../blocs/benchmark/benchmark_bloc.dart';
 import '../blocs/settings/settings_bloc.dart';
@@ -86,6 +88,8 @@ class _BenchmarkView extends StatelessWidget {
                 _ProcessingView(key: const ValueKey('processing')),
               BenchmarkStatus.result =>
                 _ResultView(key: const ValueKey('result')),
+              BenchmarkStatus.safetyBlocked =>
+                _SafetyBlockedView(key: const ValueKey('safety')),
             },
           );
         },
@@ -180,6 +184,17 @@ class _IdleView extends StatelessWidget {
                     context
                         .read<BenchmarkBloc>()
                         .add(const BenchmarkEvaluationToggled());
+                  },
+                ),
+                const SizedBox(height: UiTokens.s8),
+
+                // Transcript evaluation toggle (Clarity + Language)
+                _EvaluationToggle(
+                  enabled: state.evaluationEnabled,
+                  onToggled: () {
+                    context
+                        .read<BenchmarkBloc>()
+                        .add(const BenchmarkTranscriptEvalToggled());
                   },
                 ),
                 const SizedBox(height: UiTokens.s32),
@@ -581,8 +596,13 @@ class _ProcessingView extends StatelessWidget {
     final state = context.watch<BenchmarkBloc>().state;
 
     final visibleSteps = PipelineStep.values
-        .where((step) =>
-            step != PipelineStep.evaluating || state.benchmarkEnabled)
+        .where((step) {
+          if (step == PipelineStep.evaluating) return state.benchmarkEnabled;
+          if (step == PipelineStep.evaluatingTranscript) {
+            return state.evaluationEnabled;
+          }
+          return true;
+        })
         .toList();
 
     return SafeArea(
@@ -759,6 +779,191 @@ class _AnimatedPipelineStepRowState extends State<_AnimatedPipelineStepRow>
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// SAFETY BLOCKED STATE
+// ════════════════════════════════════════════════════════════════════════════
+
+class _SafetyBlockedView extends StatelessWidget {
+  const _SafetyBlockedView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final state = context.watch<BenchmarkBloc>().state;
+    final safetyResult = state.safetyResult;
+
+    return SafeArea(
+      child: Padding(
+        padding: UiTokens.pagePadding,
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: UiTokens.s32),
+
+                // Warning icon
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: theme.colorScheme.error.withOpacity(0.1),
+                  ),
+                  child: Icon(
+                    Icons.shield_outlined,
+                    size: 40,
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+                const SizedBox(height: UiTokens.s24),
+
+                Text(
+                  'Content Flagged',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+                const SizedBox(height: UiTokens.s8),
+
+                Text(
+                  'The safety preprocessor detected potentially unsafe content.\n'
+                  'Scoring has been skipped.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: UiTokens.s24),
+
+                // Safety details card
+                if (safetyResult != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(UiTokens.s16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.error.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(UiTokens.r16),
+                      border: Border.all(
+                        color: theme.colorScheme.error.withOpacity(0.2),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 18,
+                              color: theme.colorScheme.error,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Safety Report',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: UiTokens.s12),
+                        Text(
+                          safetyResult.summary,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            height: 1.5,
+                          ),
+                        ),
+                        if (safetyResult.violations.isNotEmpty) ...[
+                          const SizedBox(height: UiTokens.s12),
+                          ...safetyResult.violations.map(
+                            (v) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.error
+                                          .withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      v.severity.toUpperCase(),
+                                      style:
+                                          theme.textTheme.labelSmall?.copyWith(
+                                        color: theme.colorScheme.error,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 9,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          v.type.label,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          v.explanation,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: theme
+                                                .colorScheme.onSurface
+                                                .withOpacity(0.6),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: UiTokens.s32),
+
+                // Action buttons
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      context
+                          .read<BenchmarkBloc>()
+                          .add(const BenchmarkReset());
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Try Again'),
+                  ),
+                ),
+                const SizedBox(height: UiTokens.s32),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // RESULT STATE (staggered entrance)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -806,10 +1011,13 @@ class _ResultViewState extends State<_ResultView>
     if (result == null) return const SizedBox.shrink();
 
     final hasBenchmark = result.dimensions.isNotEmpty;
+    final hasEvaluation = result.hasEvaluation;
+    final isSafetyFlagged = result.isSafetyFlagged;
 
     // Count items for stagger timing
-    // header, metrics, summary, key ideas, [benchmark title + dims...], transcript, buttons
     int itemCount = 6; // header, subtitle, metrics, summary, key ideas, buttons
+    if (isSafetyFlagged) itemCount += 1;
+    if (hasEvaluation) itemCount += 3; // title + clarity card + language card
     if (hasBenchmark) itemCount += 1 + result.dimensions.length;
     int idx = 0;
 
@@ -826,7 +1034,8 @@ class _ResultViewState extends State<_ResultView>
                   child:
                       Text('Results', style: theme.textTheme.headlineSmall),
                 ),
-                if (hasBenchmark) _OverallBadge(label: result.overallLabel),
+                if (hasBenchmark && !isSafetyFlagged)
+                  _OverallBadge(label: result.overallLabel),
               ],
             ),
           ),
@@ -845,6 +1054,59 @@ class _ResultViewState extends State<_ResultView>
             ),
           ),
           const SizedBox(height: UiTokens.s24),
+
+          // Safety warning (if flagged but pipeline still completed)
+          if (isSafetyFlagged) ...[
+            _StaggerEntry(
+              animation: _entryAnimation(idx++, itemCount),
+              child: _SafetyWarningBanner(
+                safetyResult: result.safetyResult!,
+              ),
+            ),
+            const SizedBox(height: UiTokens.s16),
+          ],
+
+          // Evaluation scores (Clarity + Language) — only shown if not safety flagged
+          if (hasEvaluation && !isSafetyFlagged) ...[
+            _StaggerEntry(
+              animation: _entryAnimation(idx++, itemCount),
+              child: _EvaluationHeader(
+                evaluation: result.evaluationResult!,
+              ),
+            ),
+            const SizedBox(height: UiTokens.s12),
+            _StaggerEntry(
+              animation: _entryAnimation(idx++, itemCount),
+              child: _EvaluationScoreCard(
+                title: 'Clarity of Thought',
+                score: result.evaluationResult!.clarityScore,
+                reasoning: result.evaluationResult!.clarityReasoning,
+                icon: Icons.psychology_outlined,
+              ),
+            ),
+            const SizedBox(height: UiTokens.s8),
+            _StaggerEntry(
+              animation: _entryAnimation(idx++, itemCount),
+              child: _EvaluationScoreCard(
+                title: 'Language Proficiency',
+                score: result.evaluationResult!.languageScore,
+                reasoning: result.evaluationResult!.languageReasoning,
+                icon: Icons.translate_outlined,
+              ),
+            ),
+            const SizedBox(height: UiTokens.s16),
+
+            // Overall feedback
+            if (result.evaluationResult!.overallFeedback.isNotEmpty)
+              _StaggerEntry(
+                animation: _entryAnimation(idx - 1, itemCount),
+                child: _ResultSection(
+                  title: 'Evaluation Feedback',
+                  content: result.evaluationResult!.overallFeedback,
+                ),
+              ),
+            const SizedBox(height: UiTokens.s16),
+          ],
 
           // Metrics row
           _StaggerEntry(
@@ -868,11 +1130,11 @@ class _ResultViewState extends State<_ResultView>
           ),
           const SizedBox(height: UiTokens.s16),
 
-          // Benchmark scores (only when evaluation was run)
-          if (hasBenchmark) ...[
+          // Benchmark scores (only when evaluation was run and not safety flagged)
+          if (hasBenchmark && !isSafetyFlagged) ...[
             _StaggerEntry(
               animation: _entryAnimation(idx++, itemCount),
-              child: Text('Benchmark Scores',
+              child: Text('Summary Quality Scores',
                   style: theme.textTheme.titleMedium),
             ),
             const SizedBox(height: UiTokens.s12),
@@ -897,8 +1159,7 @@ class _ResultViewState extends State<_ResultView>
 
           // Action buttons
           _StaggerEntry(
-            animation: _entryAnimation(
-                hasBenchmark ? idx : idx++, itemCount),
+            animation: _entryAnimation(idx.clamp(0, itemCount - 1), itemCount),
             child: Row(
               children: [
                 Expanded(
@@ -1046,6 +1307,250 @@ class _BenchmarkToggle extends StatelessWidget {
             child: Switch.adaptive(
               value: enabled,
               onChanged: (_) => onToggled(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Toggle to enable/disable transcript evaluation (Clarity + Language scoring).
+class _EvaluationToggle extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onToggled;
+
+  const _EvaluationToggle({
+    required this.enabled,
+    required this.onToggled,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(UiTokens.r12),
+        border: Border.all(
+          color: theme.colorScheme.onSurface.withOpacity(0.08),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.school_outlined,
+            size: 18,
+            color: theme.colorScheme.onSurface.withOpacity(0.55),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Clarity & Language scoring',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 28,
+            child: Switch.adaptive(
+              value: enabled,
+              onChanged: (_) => onToggled(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// EVALUATION SCORE CARD
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Displays a single evaluation dimension (Clarity or Language) with score bar.
+class _EvaluationScoreCard extends StatelessWidget {
+  final String title;
+  final double score;
+  final String reasoning;
+  final IconData icon;
+
+  const _EvaluationScoreCard({
+    required this.title,
+    required this.score,
+    required this.reasoning,
+    required this.icon,
+  });
+
+  Color _scoreColor(double score) {
+    if (score >= 8) return Colors.green;
+    if (score >= 6) return Colors.lightGreen;
+    if (score >= 4) return Colors.orange;
+    if (score >= 2) return Colors.deepOrange;
+    return Colors.red;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = _scoreColor(score);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(UiTokens.s16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(UiTokens.r16),
+        border: Border.all(
+          color: theme.colorScheme.onSurface.withOpacity(0.08),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(title, style: theme.textTheme.titleMedium),
+              ),
+              // Score display
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${score.toStringAsFixed(1)}/10',
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UiTokens.s12),
+          // Score bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: score / 10.0,
+              minHeight: 6,
+              backgroundColor: color.withOpacity(0.12),
+              valueColor: AlwaysStoppedAnimation(color),
+            ),
+          ),
+          const SizedBox(height: UiTokens.s12),
+          Text(
+            reasoning,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.65),
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Header for the evaluation section showing total score.
+class _EvaluationHeader extends StatelessWidget {
+  final EvaluationResult evaluation;
+
+  const _EvaluationHeader({required this.evaluation});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Transcript Evaluation',
+            style: theme.textTheme.titleMedium,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: theme.colorScheme.primary.withOpacity(0.3),
+            ),
+          ),
+          child: Text(
+            '${evaluation.totalScore.toStringAsFixed(1)}/20 · ${evaluation.totalLabel}',
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Safety warning banner shown in results when safety flag is set.
+class _SafetyWarningBanner extends StatelessWidget {
+  final SafetyResult safetyResult;
+
+  const _SafetyWarningBanner({required this.safetyResult});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(UiTokens.s16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.error.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(UiTokens.r12),
+        border: Border.all(
+          color: theme.colorScheme.error.withOpacity(0.2),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 20,
+            color: theme.colorScheme.error,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Safety Warning',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  safetyResult.summary,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.65),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
