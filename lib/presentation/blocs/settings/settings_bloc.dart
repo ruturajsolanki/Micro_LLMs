@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 
 import '../../../domain/entities/app_settings.dart';
+import '../../../domain/entities/cloud_provider.dart';
 import '../../../domain/entities/speech_to_text_engine.dart';
 import '../../../domain/entities/text_to_speech_engine.dart';
 import '../../../domain/repositories/settings_repository.dart';
@@ -33,6 +34,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> with Loggable {
     on<TemperatureChanged>(_onTemperatureChanged);
     on<ThemeChanged>(_onThemeChanged);
     on<SelectedModelChanged>(_onSelectedModelChanged);
+    on<UseCloudProcessingToggled>(_onUseCloudProcessingToggled);
+    on<CloudLLMProviderChanged>(_onCloudLLMProviderChanged);
+    on<CloudSttProviderChanged>(_onCloudSttProviderChanged);
   }
   
   Future<void> _onLoadRequested(
@@ -223,6 +227,36 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> with Loggable {
   ) async {
     final newSettings = state.settings.copyWith(
       selectedModelPath: event.modelPath,
+    );
+    add(SettingsUpdated(settings: newSettings));
+  }
+
+  Future<void> _onUseCloudProcessingToggled(
+    UseCloudProcessingToggled event,
+    Emitter<SettingsState> emit,
+  ) async {
+    final newSettings = state.settings.copyWith(
+      useCloudProcessing: !state.settings.useCloudProcessing,
+    );
+    add(SettingsUpdated(settings: newSettings));
+  }
+
+  Future<void> _onCloudLLMProviderChanged(
+    CloudLLMProviderChanged event,
+    Emitter<SettingsState> emit,
+  ) async {
+    final newSettings = state.settings.copyWith(
+      cloudLLMProvider: event.provider,
+    );
+    add(SettingsUpdated(settings: newSettings));
+  }
+
+  Future<void> _onCloudSttProviderChanged(
+    CloudSttProviderChanged event,
+    Emitter<SettingsState> emit,
+  ) async {
+    final newSettings = state.settings.copyWith(
+      cloudSttProvider: event.provider,
     );
     add(SettingsUpdated(settings: newSettings));
   }

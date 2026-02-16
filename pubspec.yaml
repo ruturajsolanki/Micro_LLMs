@@ -45,6 +45,7 @@ dependencies:
   flutter_markdown: ^0.6.18
   shimmer: ^3.0.0
   just_audio: ^0.9.46
+  file_picker: ^8.1.6
 
 dev_dependencies:
   flutter_test:

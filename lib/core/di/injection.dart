@@ -11,13 +11,19 @@ import '../../data/datasources/settings_datasource.dart';
 import '../../data/datasources/model_download_datasource.dart';
 import '../../data/datasources/device_scanner_datasource.dart';
 import '../../data/datasources/conversation_storage.dart';
+import '../../data/datasources/audio_recorder_service.dart';
 import '../../data/repositories/llm_repository_impl.dart';
+import '../../data/repositories/cloud_llm_repository_impl.dart';
 import '../../data/repositories/voice_repository_impl.dart';
 import '../../data/repositories/settings_repository_impl.dart';
 import '../../data/repositories/model_repository_impl.dart';
 import '../../data/services/elevenlabs_tts_service.dart';
 import '../../data/services/stt_model_download_service.dart';
 import '../../data/services/stt_model_path_resolver_impl.dart';
+import '../../data/services/groq_api_service.dart';
+import '../../data/services/gemini_api_service.dart';
+import '../../data/services/cloud_api_key_storage.dart';
+import '../../data/services/cloud_connectivity_checker.dart';
 import '../../domain/repositories/llm_repository.dart';
 import '../../domain/repositories/voice_repository.dart';
 import '../../domain/repositories/settings_repository.dart';
@@ -36,11 +42,13 @@ import '../../domain/services/system_prompt_manager.dart';
 import '../../domain/services/prompt_security_layer.dart';
 import '../../data/datasources/benchmark_storage.dart';
 import '../../data/datasources/system_prompt_storage_impl.dart';
+import '../../data/datasources/v2_session_storage.dart';
 import '../../presentation/blocs/chat/chat_bloc.dart';
 import '../../presentation/blocs/settings/settings_bloc.dart';
 import '../../presentation/blocs/model/model_bloc.dart';
 import '../../presentation/blocs/voice/voice_bloc.dart';
 import '../../presentation/blocs/benchmark/benchmark_bloc.dart';
+import '../../presentation/blocs/v2_session/v2_session_bloc.dart';
 import '../utils/logger.dart';
 
 /// Global service locator instance.
@@ -171,6 +179,33 @@ Future<void> initializeDependencies() async {
   );
   
   // ============================================================
+  // V2 CLOUD SERVICES
+  // ============================================================
+
+  sl.registerLazySingleton(() => GroqApiService());
+  sl.registerLazySingleton(() => GeminiApiService());
+  sl.registerLazySingleton(
+    () => CloudApiKeyStorage(secureStorage: sl()),
+  );
+  sl.registerLazySingleton(
+    () => CloudConnectivityChecker(
+      keyStorage: sl(),
+      groqApi: sl(),
+      geminiApi: sl(),
+    ),
+  );
+  sl.registerLazySingleton(() => AudioRecorderService());
+
+  // Cloud LLM repository (used by V2 flow)
+  sl.registerLazySingleton(
+    () => CloudLLMRepositoryImpl(
+      groqApi: sl(),
+      geminiApi: sl(),
+      keyStorage: sl(),
+    ),
+  );
+
+  // ============================================================
   // USE CASES
   // ============================================================
   
@@ -219,6 +254,10 @@ Future<void> initializeDependencies() async {
 
   sl.registerLazySingleton<SystemPromptStorage>(
     () => SystemPromptStorageImpl(settingsBox: sl(instanceName: 'settingsBox')),
+  );
+
+  sl.registerLazySingleton(
+    () => V2SessionStorage(settingsBox: sl(instanceName: 'settingsBox')),
   );
 
   // ============================================================
@@ -294,6 +333,18 @@ Future<void> initializeDependencies() async {
       speechToTextUseCase: sl(),
       summarizeTranscriptUseCase: sl(),
       benchmarkStorage: sl(),
+    ),
+  );
+
+  sl.registerFactory(
+    () => V2SessionBloc(
+      connectivityChecker: sl(),
+      keyStorage: sl(),
+      groqApi: sl(),
+      cloudLlmRepo: sl(),
+      audioRecorder: sl(),
+      promptManager: sl(),
+      sessionStorage: sl(),
     ),
   );
   

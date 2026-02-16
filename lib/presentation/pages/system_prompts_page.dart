@@ -41,6 +41,8 @@ class _SystemPromptsPageState extends State<SystemPromptsPage> {
         return Icons.shield_rounded;
       case SystemPromptKey.injectionGuard:
         return Icons.security_rounded;
+      case SystemPromptKey.cloudEvaluation:
+        return Icons.cloud_rounded;
     }
   }
 
@@ -52,6 +54,8 @@ class _SystemPromptsPageState extends State<SystemPromptsPage> {
         return 'Screens transcripts for unsafe content before evaluation';
       case SystemPromptKey.injectionGuard:
         return 'Detects prompt injection attempts in transcripts';
+      case SystemPromptKey.cloudEvaluation:
+        return 'Cloud-optimized rubric for Groq/Gemini (V2)';
     }
   }
 
@@ -64,6 +68,8 @@ class _SystemPromptsPageState extends State<SystemPromptsPage> {
         return Colors.orange;
       case SystemPromptKey.injectionGuard:
         return Colors.redAccent;
+      case SystemPromptKey.cloudEvaluation:
+        return Colors.blue;
     }
   }
 

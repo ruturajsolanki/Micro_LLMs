@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import '../../core/error/exceptions.dart';
 import '../../core/utils/logger.dart';
 import '../../domain/entities/app_settings.dart';
+import '../../domain/entities/cloud_provider.dart';
 import '../../domain/entities/speech_to_text_engine.dart';
 import '../../domain/entities/text_to_speech_engine.dart';
 
@@ -53,6 +54,9 @@ class SettingsDataSourceImpl with Loggable implements SettingsDataSource {
       final selectedModelPath = _settingsBox.get('selectedModelPath') as String?;
       final showTokenCount = _settingsBox.get('showTokenCount') as bool?;
       final keepScreenOn = _settingsBox.get('keepScreenOn') as bool?;
+      final useCloudProcessing = _settingsBox.get('useCloudProcessing') as bool?;
+      final cloudLLMProviderId = _settingsBox.get('cloudLLMProvider') as String?;
+      final cloudSttProviderId = _settingsBox.get('cloudSttProvider') as String?;
       
       return AppSettings(
         sourceLanguage: sourceLanguage ?? 'en',
@@ -75,6 +79,9 @@ class SettingsDataSourceImpl with Loggable implements SettingsDataSource {
         selectedModelPath: selectedModelPath,
         showTokenCount: showTokenCount ?? false,
         keepScreenOn: keepScreenOn ?? true,
+        useCloudProcessing: useCloudProcessing ?? true,
+        cloudLLMProvider: CloudLLMProviderX.fromId(cloudLLMProviderId),
+        cloudSttProvider: CloudSttProviderX.fromId(cloudSttProviderId),
       );
     } catch (e, stack) {
       logger.e('Failed to load settings', error: e, stackTrace: stack);
@@ -105,6 +112,9 @@ class SettingsDataSourceImpl with Loggable implements SettingsDataSource {
         'selectedModelPath': settings.selectedModelPath,
         'showTokenCount': settings.showTokenCount,
         'keepScreenOn': settings.keepScreenOn,
+        'useCloudProcessing': settings.useCloudProcessing,
+        'cloudLLMProvider': settings.cloudLLMProvider.id,
+        'cloudSttProvider': settings.cloudSttProvider.id,
       });
     } catch (e, stack) {
       logger.e('Failed to save settings', error: e, stackTrace: stack);

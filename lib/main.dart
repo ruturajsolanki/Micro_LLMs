@@ -7,12 +7,15 @@ import 'core/utils/logger.dart';
 import 'domain/entities/app_settings.dart';
 import 'presentation/blocs/model/model_bloc.dart';
 import 'presentation/blocs/settings/settings_bloc.dart';
+import 'presentation/pages/api_setup_page.dart';
 import 'presentation/pages/chat_page.dart';
 import 'presentation/pages/onboarding_page.dart';
 import 'presentation/pages/settings_page.dart';
 import 'presentation/pages/device_compatibility_page.dart';
 import 'presentation/pages/benchmark_page.dart';
 import 'presentation/pages/system_prompts_page.dart';
+import 'presentation/pages/v2_history_page.dart';
+import 'presentation/pages/v2_home_page.dart';
 import 'presentation/theme/app_theme.dart';
 
 /// Application entry point.
@@ -93,17 +96,39 @@ class MicroLLMApp extends StatelessWidget {
   Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case '/':
-        // Entry point - check model status
+        // V2: Cloud-first entry point
         return MaterialPageRoute(
-          builder: (context) => BlocBuilder<ModelBloc, ModelState>(
-            builder: (context, state) {
-              // Show onboarding if model not ready
-              if (!state.isReady) {
-                return const OnboardingPage();
+          builder: (context) => BlocBuilder<SettingsBloc, SettingsState>(
+            builder: (context, settingsState) {
+              if (settingsState.settings.useCloudProcessing) {
+                return const V2HomePage();
               }
-              return const ChatPage();
+              // V1 fallback: check model status
+              return BlocBuilder<ModelBloc, ModelState>(
+                builder: (context, modelState) {
+                  if (!modelState.isReady) {
+                    return const OnboardingPage();
+                  }
+                  return const ChatPage();
+                },
+              );
             },
           ),
+        );
+
+      case '/v2-home':
+        return MaterialPageRoute(
+          builder: (_) => const V2HomePage(),
+        );
+
+      case '/api-setup':
+        return MaterialPageRoute(
+          builder: (_) => const ApiSetupPage(),
+        );
+
+      case '/v2-history':
+        return MaterialPageRoute(
+          builder: (_) => const V2HistoryPage(),
         );
       
       case '/chat':

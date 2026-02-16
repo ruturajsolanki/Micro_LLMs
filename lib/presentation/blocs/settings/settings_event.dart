@@ -132,3 +132,28 @@ final class SelectedModelChanged extends SettingsEvent {
   @override
   List<Object?> get props => [modelPath];
 }
+
+/// Toggle cloud processing on/off.
+final class UseCloudProcessingToggled extends SettingsEvent {
+  const UseCloudProcessingToggled();
+}
+
+/// Change cloud LLM provider (Groq / Gemini).
+final class CloudLLMProviderChanged extends SettingsEvent {
+  final CloudLLMProvider provider;
+
+  const CloudLLMProviderChanged({required this.provider});
+
+  @override
+  List<Object> get props => [provider];
+}
+
+/// Change cloud STT provider (Groq Whisper / Local Whisper).
+final class CloudSttProviderChanged extends SettingsEvent {
+  final CloudSttProvider provider;
+
+  const CloudSttProviderChanged({required this.provider});
+
+  @override
+  List<Object> get props => [provider];
+}

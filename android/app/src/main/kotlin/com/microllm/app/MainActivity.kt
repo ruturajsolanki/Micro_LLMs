@@ -27,6 +27,7 @@ class MainActivity : FlutterActivity() {
     private lateinit var ttsHandler: TextToSpeechHandler
     private lateinit var memoryHandler: MemoryHandler
     private lateinit var deviceScannerHandler: DeviceScannerHandler
+    private lateinit var audioRecorderHandler: AudioRecorderHandler
 
     private val micPermissionRequestCode = 1001
 
@@ -46,6 +47,7 @@ class MainActivity : FlutterActivity() {
         ttsHandler = TextToSpeechHandler(this)
         memoryHandler = MemoryHandler(this)
         deviceScannerHandler = DeviceScannerHandler(this)
+        audioRecorderHandler = AudioRecorderHandler(this)
 
         // Set up LLM method channel (via JNI, bypasses FFI struct issues)
         MethodChannel(
@@ -108,6 +110,19 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             deviceScannerHandler.handleMethodCall(call, result)
         }
+
+        // Audio recorder for V2 cloud STT
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.microllm.app/audio_recorder"
+        ).setMethodCallHandler { call, result ->
+            audioRecorderHandler.handleMethodCall(call, result)
+        }
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.microllm.app/audio_recorder_events"
+        ).setStreamHandler(audioRecorderHandler)
     }
 
     private fun ensureMicPermission() {
@@ -131,5 +146,6 @@ class MainActivity : FlutterActivity() {
         sttHandler.destroy()
         whisperHandler.destroy()
         ttsHandler.destroy()
+        audioRecorderHandler.destroy()
     }
 }

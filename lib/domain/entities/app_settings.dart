@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import '../../core/constants/app_constants.dart';
+import 'cloud_provider.dart';
 import 'speech_to_text_engine.dart';
 import 'text_to_speech_engine.dart';
 
@@ -69,6 +70,15 @@ class AppSettings extends Equatable {
   
   /// Whether to keep screen on during inference.
   final bool keepScreenOn;
+
+  /// Whether to use cloud processing (V2 mode) instead of local LLM.
+  final bool useCloudProcessing;
+
+  /// Which cloud LLM provider to use for evaluation/summarization.
+  final CloudLLMProvider cloudLLMProvider;
+
+  /// Which cloud STT provider to use for transcription.
+  final CloudSttProvider cloudSttProvider;
   
   const AppSettings({
     this.sourceLanguage = LanguageConstants.defaultSourceLanguage,
@@ -89,6 +99,9 @@ class AppSettings extends Equatable {
     this.selectedModelPath,
     this.showTokenCount = false,
     this.keepScreenOn = true,
+    this.useCloudProcessing = true,
+    this.cloudLLMProvider = CloudLLMProvider.groq,
+    this.cloudSttProvider = CloudSttProvider.groqWhisper,
   });
   
   /// Default settings.
@@ -114,6 +127,9 @@ class AppSettings extends Equatable {
     String? selectedModelPath,
     bool? showTokenCount,
     bool? keepScreenOn,
+    bool? useCloudProcessing,
+    CloudLLMProvider? cloudLLMProvider,
+    CloudSttProvider? cloudSttProvider,
   }) {
     return AppSettings(
       sourceLanguage: sourceLanguage ?? this.sourceLanguage,
@@ -134,6 +150,9 @@ class AppSettings extends Equatable {
       selectedModelPath: selectedModelPath ?? this.selectedModelPath,
       showTokenCount: showTokenCount ?? this.showTokenCount,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+      useCloudProcessing: useCloudProcessing ?? this.useCloudProcessing,
+      cloudLLMProvider: cloudLLMProvider ?? this.cloudLLMProvider,
+      cloudSttProvider: cloudSttProvider ?? this.cloudSttProvider,
     );
   }
   
@@ -177,6 +196,9 @@ class AppSettings extends Equatable {
     selectedModelPath,
     showTokenCount,
     keepScreenOn,
+    useCloudProcessing,
+    cloudLLMProvider,
+    cloudSttProvider,
   ];
 }
 

@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/di/injection.dart';
 import '../../domain/entities/app_settings.dart';
+import '../../domain/entities/cloud_provider.dart';
 import '../../domain/entities/speech_to_text_engine.dart';
 import '../../domain/entities/text_to_speech_engine.dart';
 import '../../domain/services/stt_model_catalog.dart';
@@ -37,6 +38,71 @@ class SettingsPage extends StatelessWidget {
           return ListView(
             padding: UiTokens.pagePadding,
             children: [
+              _buildSection(
+                context: context,
+                title: 'Cloud',
+                children: [
+                  SwitchListTile.adaptive(
+                    title: const Text('Cloud Processing (V2)'),
+                    subtitle: const Text('Use Groq/Gemini for evaluation'),
+                    value: state.settings.useCloudProcessing,
+                    onChanged: (_) {
+                      context.read<SettingsBloc>().add(
+                            const UseCloudProcessingToggled(),
+                          );
+                    },
+                  ),
+                  ListTile(
+                    title: const Text('Cloud LLM Provider'),
+                    subtitle: const Text('Model used for scoring'),
+                    trailing: DropdownButton<CloudLLMProvider>(
+                      value: state.settings.cloudLLMProvider,
+                      underline: const SizedBox.shrink(),
+                      items: CloudLLMProvider.values
+                          .map((e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e.displayName),
+                              ))
+                          .toList(),
+                      onChanged: (p) {
+                        if (p != null) {
+                          context.read<SettingsBloc>().add(
+                                CloudLLMProviderChanged(provider: p),
+                              );
+                        }
+                      },
+                    ),
+                  ),
+                  ListTile(
+                    title: const Text('Cloud STT Provider'),
+                    subtitle: const Text('Transcription engine'),
+                    trailing: DropdownButton<CloudSttProvider>(
+                      value: state.settings.cloudSttProvider,
+                      underline: const SizedBox.shrink(),
+                      items: CloudSttProvider.values
+                          .map((e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e.displayName),
+                              ))
+                          .toList(),
+                      onChanged: (p) {
+                        if (p != null) {
+                          context.read<SettingsBloc>().add(
+                                CloudSttProviderChanged(provider: p),
+                              );
+                        }
+                      },
+                    ),
+                  ),
+                  ListTile(
+                    title: const Text('API Keys'),
+                    subtitle: const Text('Manage Groq & Gemini keys'),
+                    leading: const Icon(Icons.vpn_key_outlined),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pushNamed(context, '/api-setup'),
+                  ),
+                ],
+              ),
               _buildSection(
                 context: context,
                 title: 'Languages',
