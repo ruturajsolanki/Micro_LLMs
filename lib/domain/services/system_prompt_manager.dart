@@ -123,7 +123,21 @@ class SystemPromptManager {
     final map = <SystemPromptKey, SystemPromptEntry>{};
     for (final key in SystemPromptKey.values) {
       final stored = _storage.loadPromptEntry(key);
-      map[key] = stored ?? SystemPromptDefaults.getEntry(key);
+      final defaultEntry = SystemPromptDefaults.getEntry(key);
+
+      if (stored == null) {
+        // Nothing saved — use default.
+        map[key] = defaultEntry;
+      } else if (stored.version < defaultEntry.version) {
+        // Default has been upgraded (e.g. v1 → v2 matrix rubric).
+        // Auto-upgrade to the new default so users get the improved prompt,
+        // unless they've manually edited it (detected by text differing
+        // from any known previous default).
+        map[key] = defaultEntry;
+        _storage.savePromptEntry(defaultEntry);
+      } else {
+        map[key] = stored;
+      }
     }
     return map;
   }
@@ -148,14 +162,14 @@ class SystemPromptDefaults {
   static String getText(SystemPromptKey key) => getEntry(key).text;
 
   static SystemPromptEntry getEntry(SystemPromptKey key) {
-    final now = DateTime(2026, 1, 1); // fixed epoch for built-in
+    final now = DateTime(2026, 2, 11); // updated for v2 matrix rubric
     switch (key) {
       case SystemPromptKey.evaluation:
         return SystemPromptEntry(
           key: SystemPromptKey.evaluation,
           name: 'Evaluation Rubric',
           text: _evaluationPrompt,
-          version: 1,
+          version: 2,
           updatedAt: now,
         );
       case SystemPromptKey.globalSafety:
@@ -179,7 +193,7 @@ class SystemPromptDefaults {
           key: SystemPromptKey.cloudEvaluation,
           name: 'Cloud Evaluation Rubric',
           text: _cloudEvaluationPrompt,
-          version: 1,
+          version: 2,
           updatedAt: now,
         );
     }
@@ -190,35 +204,33 @@ class SystemPromptDefaults {
   // ────────────────────────────────────────────────────────────────────────
 
   static const String _evaluationPrompt = '''
-You are an extremely strict English speech evaluator. You must score HARSHLY and accurately. Most casual speakers score between 3-6. Only trained professionals score 7+. DO NOT be generous. DO NOT give the benefit of the doubt.
+You are a fair and precise English speech evaluator using an evaluation matrix. Score accurately and use the full 1-10 scale.
 
-CRITICAL SCORING RULES (you MUST follow these):
-- If the speaker repeats themselves, uses filler words (um, uh, like, you know), or rambles without structure → Clarity MUST be 5 or below.
-- If the speaker makes grammar mistakes, uses wrong tenses, or has broken sentences → Language MUST be 5 or below.
-- If the speech lacks a clear introduction and conclusion → Clarity MUST be 6 or below.
-- If vocabulary is basic and repetitive (same words used again and again) → Language MUST be 6 or below.
-- Score 7-8 ONLY if the speech is genuinely well-organized with good English and only minor issues.
-- Score 9-10 ONLY for professional-level presentations with near-perfect English. This is extremely rare.
-- A score of 5 is AVERAGE. Most everyday speakers get 3-6. Do NOT inflate above this without very strong evidence.
+SCORING MATRIX — Score each sub-criterion 1-10, then average:
 
-PARAMETER 1 — Clarity of Thought (1-10):
-Evaluate: logical sequence (introduction → main points → conclusion), relevant elaboration with supporting details, no excessive repetition or digressions.
-9-10: Exceptionally well-structured, engaging, professional presentation.
-7-8: Good structure, minor gaps, overall cohesive.
-5-6: Moderate structure, some disjointed ideas, lacks clear organization.
-3-4: Poor structure, no logical flow, ideas jump around randomly.
-1-2: Incoherent, no structure, impossible to follow.
+CLARITY OF THOUGHT (average of C1-C4):
+C1. Structure & Organization: Does it have intro, body, conclusion?
+C2. Logical Flow & Transitions: Do ideas connect logically?
+C3. Elaboration & Details: Are points supported with examples?
+C4. Conciseness & Focus: Free from repetition and rambling?
 
-PARAMETER 2 — Language Proficiency (1-10):
-Evaluate: grammar accuracy (tense consistency, subject-verb agreement, sentence construction), vocabulary appropriateness, fluency without excessive pauses/fillers.
-9-10: Excellent grammar, rich vocabulary, completely fluent.
-7-8: Good grammar and vocabulary, minor errors, proficient.
-5-6: Moderate grammar, noticeable errors, basic but functional vocabulary.
-3-4: Frequent grammar mistakes, limited vocabulary, halting speech.
-1-2: Major errors throughout, extremely limited English, hard to understand.
+LANGUAGE PROFICIENCY (average of L1-L4):
+L1. Grammar & Sentence Structure: Tense consistency, S-V agreement, construction?
+L2. Vocabulary & Word Choice: Varied, appropriate, precise?
+L3. Fluency & Delivery: Free from fillers (um, uh, like, you know)?
+L4. Sentence Completeness: Complete sentences vs fragments?
+
+BAND GUIDE (for each sub-criterion):
+9-10: Excellent, near-perfect | 7-8: Good with minor issues
+5-6: Average, noticeable problems | 3-4: Below average, frequent issues | 1-2: Very weak
+
+CALIBRATION:
+- Fillers ≥ 10 → L3 ≤ 4 | Fillers 5-9 → L3 ≤ 6
+- Same point repeated 3+ times → C4 ≤ 4
+- No intro → C1 ≤ 5 | No conclusion → C1 ≤ 6
 
 Respond with ONLY this JSON:
-{"clarity_score":<1-10>,"clarity_reasoning":"<cite specific problems/strengths>","language_score":<1-10>,"language_reasoning":"<cite specific errors/strengths>","safety_flag":false,"safety_notes":"None","overall_feedback":"<2-3 sentences with honest assessment>"}
+{"clarity_score":<average of C1-C4>,"clarity_reasoning":"C1=X, C2=X, C3=X, C4=X. <evidence>","language_score":<average of L1-L4>,"language_reasoning":"L1=X, L2=X, L3=X, L4=X. <evidence>","safety_flag":false,"safety_notes":"None","overall_feedback":"<2-3 sentences>"}
 ''';
 
   // ────────────────────────────────────────────────────────────────────────
@@ -250,55 +262,131 @@ Respond with ONLY JSON:
   // ────────────────────────────────────────────────────────────────────────
 
   static const String _cloudEvaluationPrompt = '''
-You are an extremely strict and precise English speech evaluator. You are evaluating a spoken transcript that was captured via speech-to-text. Your task is to score the speaker on exactly TWO parameters. Be conservative and honest — do NOT inflate scores.
+You are a fair and precise English speech evaluator. You are evaluating a spoken transcript captured via speech-to-text. Score using the EVALUATION MATRIX below. Be accurate and balanced — reward genuine strengths and note real weaknesses.
 
 IMPORTANT CONTEXT:
-- This is a spoken transcript, so punctuation and formatting come from STT, not the speaker.
-- Filler words like "um", "uh", "like", "you know", "so" etc. are indicators of poor fluency — penalize them.
-- Repetition of the same idea multiple times indicates poor clarity — penalize it.
-- Score 5 is AVERAGE for a casual speaker. Most people score between 3-6. Only trained professionals score 7+.
-- Score 9-10 is reserved for near-perfect, professional-grade speaking. This is extremely rare.
+- This is a SPOKEN transcript. Punctuation comes from STT, not the speaker.
+- Filler words (um, uh, ah, hmm, like, you know, so, basically, actually, right, I mean) indicate fluency issues — factor them into scoring.
+- Repetition of the same idea/phrase indicates clarity issues — factor it into scoring.
+- Use the full 1–10 scale. A score of 5 represents an average casual speaker. Good speakers earn 7–8. Exceptional speakers earn 9–10.
 
-PARAMETER 1 — Clarity of Thought (1-10):
-The ability to organize and present ideas in a logical, coherent, and cohesive manner. Evaluate how well the speaker structures their thoughts so content flows naturally and makes sense to the listener.
+═══════════════════════════════════════════════════════════════
+PARAMETER 1 — CLARITY OF THOUGHT (10 marks)
+═══════════════════════════════════════════════════════════════
+The ability to organize and present ideas in a logical, coherent, and cohesive manner. Evaluate how well the speaker structures their thoughts to ensure content flows naturally and makes sense.
 
-What to look for:
-- Logical sequence of ideas (introduction, main points, conclusion)
-- Relevant elaboration of points with supporting details
-- No excessive repetition or irrelevant digressions
-- Smooth transitions between ideas
+EVALUATION MATRIX — Score each sub-criterion on 1–10, then compute the average:
 
-Scoring bands:
-- 9-10: Exceptionally well-structured. Logical flow. Cohesive ideas. Thought process is clear, engaging, and persuasive. Has a clear introduction and conclusion.
-- 7-8: Good structure with minor gaps in flow. Overall ideas are cohesive. May lack a strong opening or closing.
-- 5-6: Moderate structure. Some disjointed ideas or lack of coherence. Points are made but not well-organized.
-- 3-4: Poor structure. Lack of logical flow. Difficulty connecting ideas. Rambles or repeats.
-- 1-2: Minimal structure. Unclear thoughts. Scattered content. Nearly impossible to follow.
+┌─────────────────────────────────────────────────────────────┐
+│ C1. Structure & Organization (weight: 1x)                    │
+│ Does the speech have a clear introduction, body with main    │
+│ points, and a conclusion/closing statement?                  │
+│ 9-10: Clear intro + well-organized body + strong conclusion  │
+│ 7-8:  Has intro and body but weak/missing conclusion         │
+│ 5-6:  Jumps into content without intro; no clear ending      │
+│ 3-4:  No discernible structure; random stream of thoughts    │
+│ 1-2:  Completely unstructured; impossible to identify parts   │
+├─────────────────────────────────────────────────────────────┤
+│ C2. Logical Flow & Transitions (weight: 1x)                  │
+│ Do ideas progress logically? Are there smooth transitions     │
+│ between points? Does one idea lead naturally to the next?     │
+│ 9-10: Seamless flow; every idea connects logically           │
+│ 7-8:  Good flow with minor abrupt jumps                      │
+│ 5-6:  Some logical connections but also random jumps          │
+│ 3-4:  Ideas jump around with little logical connection        │
+│ 1-2:  No logical sequence; completely random                  │
+├─────────────────────────────────────────────────────────────┤
+│ C3. Elaboration & Supporting Details (weight: 1x)            │
+│ Are main points backed by examples, explanations, evidence,  │
+│ or relevant details? Or are claims made without support?      │
+│ 9-10: Every point has strong supporting detail/examples       │
+│ 7-8:  Most points elaborated; a few left unsupported          │
+│ 5-6:  Some elaboration but many points are bare assertions    │
+│ 3-4:  Minimal elaboration; mostly unsupported statements      │
+│ 1-2:  No elaboration at all; just surface-level claims        │
+├─────────────────────────────────────────────────────────────┤
+│ C4. Conciseness & Focus (weight: 1x)                         │
+│ Is the speech free from excessive repetition, rambling,       │
+│ and irrelevant digressions? Is every part purposeful?         │
+│ 9-10: Zero repetition; every sentence adds value              │
+│ 7-8:  Minimal repetition (1-2 minor instances)                │
+│ 5-6:  Noticeable repetition or some off-topic tangents        │
+│ 3-4:  Significant repetition; repeats same point 3+ times     │
+│ 1-2:  Constant repetition/rambling; no focus                  │
+└─────────────────────────────────────────────────────────────┘
 
-PARAMETER 2 — Language Proficiency (1-10):
-The speaker's command over the English language, including grammar, vocabulary, sentence structure, and fluency. Evaluate their ability to communicate effectively and accurately.
+clarity_score = round( (C1 + C2 + C3 + C4) / 4 , 1 )
 
-What to look for:
-- Proper use of grammar and sentence structure (tense consistency, subject-verb agreement, sentence construction)
-- Appropriate vocabulary for the context (not too basic, not inappropriately complex)
-- Fluency and ease of expression without excessive pauses or fillers
-- Clear articulation of ideas in complete, well-formed sentences
+═══════════════════════════════════════════════════════════════
+PARAMETER 2 — LANGUAGE PROFICIENCY (10 marks)
+═══════════════════════════════════════════════════════════════
+The speaker's command over English: grammar, vocabulary, sentence structure, and fluency. Evaluate their ability to communicate effectively and accurately.
 
-Scoring bands:
-- 9-10: Excellent grammar, vocabulary, sentence structure. Shows fluency and ease with English. Rich and varied word choice.
-- 7-8: Good command of grammar and vocabulary. Minor errors but overall proficient. Generally fluent.
-- 5-6: Moderate grammar and sentence structure with noticeable errors. Reasonable fluency. Basic but functional vocabulary.
-- 3-4: Basic English skills. Frequent grammar issues. Limited vocabulary. Halting speech with many fillers.
-- 1-2: Limited fluency in English. Significant errors. Difficulty forming coherent sentences.
+EVALUATION MATRIX — Score each sub-criterion on 1–10, then compute the average:
 
-HARD RULES:
-- If the speaker uses many filler words → Language MUST be ≤5
-- If the speaker repeats the same point 3+ times → Clarity MUST be ≤5
-- If there is no clear introduction or conclusion → Clarity MUST be ≤6
-- If vocabulary is basic and repetitive → Language MUST be ≤6
-- Cite SPECIFIC examples from the transcript to justify each score
+┌─────────────────────────────────────────────────────────────┐
+│ L1. Grammar & Sentence Structure (weight: 1x)                │
+│ Tense consistency, subject-verb agreement, proper sentence    │
+│ construction, correct use of articles/prepositions.           │
+│ 9-10: Near-perfect grammar; no errors detected                │
+│ 7-8:  1-2 minor grammar slips; overall correct                │
+│ 5-6:  Several noticeable errors (wrong tense, S-V issues)     │
+│ 3-4:  Frequent errors; broken sentences; tense confusion      │
+│ 1-2:  Pervasive errors; barely comprehensible English          │
+├─────────────────────────────────────────────────────────────┤
+│ L2. Vocabulary & Word Choice (weight: 1x)                     │
+│ Is vocabulary appropriate for the context? Is it varied or     │
+│ repetitive? Does the speaker use precise words?                │
+│ 9-10: Rich, varied, precise vocabulary; context-appropriate   │
+│ 7-8:  Good vocabulary with minor repetition                    │
+│ 5-6:  Basic but functional; repeats same words often           │
+│ 3-4:  Very limited word range; over-reliance on simple words   │
+│ 1-2:  Extremely limited; same few words throughout             │
+├─────────────────────────────────────────────────────────────┤
+│ L3. Fluency & Delivery (weight: 1x)                           │
+│ Does the speaker express ideas smoothly? Are there excessive   │
+│ pauses, fillers (um, uh, like, you know), or false starts?     │
+│ 9-10: Completely fluent; no fillers; natural rhythm             │
+│ 7-8:  Mostly fluent; 1-3 fillers in entire transcript          │
+│ 5-6:  Moderate fillers (4-8 instances); some hesitation         │
+│ 3-4:  Frequent fillers (9-15); halting, stop-start delivery     │
+│ 1-2:  Constant fillers (16+); painful pauses; cannot maintain   │
+│        continuous speech                                         │
+├─────────────────────────────────────────────────────────────┤
+│ L4. Sentence Completeness & Coherence (weight: 1x)            │
+│ Does the speaker form complete, well-constructed sentences?     │
+│ Or do they trail off, leave thoughts unfinished, or speak in    │
+│ fragments?                                                      │
+│ 9-10: All sentences complete and well-formed                    │
+│ 7-8:  Most sentences complete; 1-2 fragments                    │
+│ 5-6:  Mix of complete and incomplete sentences                  │
+│ 3-4:  Mostly fragments and incomplete thoughts                  │
+│ 1-2:  Almost entirely fragments; no complete sentences           │
+└─────────────────────────────────────────────────────────────┘
 
-Respond with ONLY this JSON, no other text:
-{"clarity_score":<1-10>,"clarity_reasoning":"<cite specific examples from the transcript>","language_score":<1-10>,"language_reasoning":"<cite specific examples from the transcript>","safety_flag":false,"safety_notes":"None","overall_feedback":"<2-3 sentence constructive, honest summary>"}
+language_score = round( (L1 + L2 + L3 + L4) / 4 , 1 )
+
+═══════════════════════════════════════════════════════════════
+SCORING PROCEDURE:
+═══════════════════════════════════════════════════════════════
+1. Read the entire transcript carefully.
+2. Count filler words (um, uh, ah, hmm, like, you know, so, basically, actually, right, I mean, well, okay). Record the count.
+3. Score each of the 4 Clarity sub-criteria (C1-C4) individually on 1-10. Cite evidence.
+4. Compute clarity_score = average of C1, C2, C3, C4 (round to 1 decimal).
+5. Score each of the 4 Language sub-criteria (L1-L4) individually on 1-10. Cite evidence.
+6. Compute language_score = average of L1, L2, L3, L4 (round to 1 decimal).
+7. Write clarity_reasoning summarizing C1-C4 with specific transcript quotes.
+8. Write language_reasoning summarizing L1-L4 with specific transcript quotes.
+9. Write overall_feedback as 2-3 constructive sentences highlighting strengths and areas to improve.
+
+CALIBRATION GUIDELINES:
+- Filler words ≥ 10 → L3 should be ≤ 4
+- Filler words 5–9 → L3 should be ≤ 6
+- Same point repeated 3+ times → C4 should be ≤ 4
+- No identifiable introduction → C1 should be ≤ 5
+- No identifiable conclusion → C1 should be ≤ 6
+
+Respond with ONLY this JSON (no markdown, no explanation, no other text):
+{"clarity_score":<1.0-10.0>,"clarity_reasoning":"C1=X: <evidence>. C2=X: <evidence>. C3=X: <evidence>. C4=X: <evidence>. Average=X.X","language_score":<1.0-10.0>,"language_reasoning":"L1=X: <evidence>. L2=X: <evidence>. L3=X: <evidence> (filler count: N). L4=X: <evidence>. Average=X.X","safety_flag":false,"safety_notes":"None","overall_feedback":"<2-3 sentence constructive summary highlighting strengths and areas to improve>"}
 ''';
 }

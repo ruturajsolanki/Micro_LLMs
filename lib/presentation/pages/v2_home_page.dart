@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injection.dart';
+import '../../data/datasources/audio_recorder_service.dart';
 import '../blocs/v2_session/v2_session_bloc.dart';
 import '../theme/ui_tokens.dart';
 
@@ -43,6 +44,11 @@ class _V2HomeView extends StatelessWidget {
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
+          IconButton(
+            icon: const Icon(Icons.lock_open_rounded, size: 20),
+            tooltip: 'Unlock V1',
+            onPressed: () => _showPinDialog(context),
+          ),
         ],
       ),
       body: BlocBuilder<V2SessionBloc, V2SessionState>(
@@ -56,6 +62,53 @@ class _V2HomeView extends StatelessWidget {
     );
   }
 
+  void _showPinDialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unlock V1 Interface'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          obscureText: true,
+          maxLength: 4,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter PIN',
+            counterText: '',
+          ),
+          onSubmitted: (_) {
+            if (controller.text == '7890') {
+              Navigator.pop(ctx);
+              Navigator.pushNamed(context, '/v1-home');
+            }
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text == '7890') {
+                Navigator.pop(ctx);
+                Navigator.pushNamed(context, '/v1-home');
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Incorrect PIN')),
+                );
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Unlock'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBody(BuildContext context, V2SessionState state) {
     switch (state.status) {
       case V2SessionStatus.checking:
@@ -65,7 +118,10 @@ class _V2HomeView extends StatelessWidget {
       case V2SessionStatus.ready:
         return _ReadyView(cloudReady: state.cloudReady);
       case V2SessionStatus.recording:
-        return _RecordingView(seconds: state.recordingSeconds);
+        return _RecordingView(
+          seconds: state.recordingSeconds,
+          liveTranscript: state.liveTranscript,
+        );
       case V2SessionStatus.transcribing:
         return _ProcessingView(step: state.processingStep ?? 'Transcribing...');
       case V2SessionStatus.evaluating:
@@ -337,11 +393,70 @@ class _ReadyView extends StatelessWidget {
   }
 }
 
-// ── Recording View ─────────────────────────────────────────────────
+// ── Recording View with Waveform + Live Transcript ─────────────────
 
-class _RecordingView extends StatelessWidget {
+class _RecordingView extends StatefulWidget {
   final int seconds;
-  const _RecordingView({required this.seconds});
+  final String? liveTranscript;
+  const _RecordingView({required this.seconds, this.liveTranscript});
+
+  @override
+  State<_RecordingView> createState() => _RecordingViewState();
+}
+
+class _RecordingViewState extends State<_RecordingView>
+    with SingleTickerProviderStateMixin {
+  late final AudioRecorderService _recorder;
+  late final AnimationController _animController;
+  final ScrollController _scrollController = ScrollController();
+
+  /// Rolling buffer of normalised amplitudes (0.0 – 1.0).
+  final List<double> _bars = List.filled(48, 0.0);
+  int _barIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _recorder = sl<AudioRecorderService>();
+
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 80),
+    );
+
+    _recorder.rmsStream.listen((rmsDb) {
+      if (!mounted) return;
+      final clamped = (rmsDb + 60).clamp(0.0, 60.0) / 60.0;
+      setState(() {
+        _bars[_barIndex % _bars.length] = clamped;
+        _barIndex++;
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecordingView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Auto-scroll to bottom when live transcript updates.
+    if (widget.liveTranscript != oldWidget.liveTranscript) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   String _formatTime(int s) {
     final m = s ~/ 60;
@@ -354,67 +469,192 @@ class _RecordingView extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    return Center(
-      child: Padding(
-        padding: UiTokens.pagePadding,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Pulsing red indicator
-            _PulsingDot(color: Colors.red.shade400),
+    final hasTranscript =
+        widget.liveTranscript != null && widget.liveTranscript!.isNotEmpty;
 
-            const SizedBox(height: 16),
-
-            Text(
-              'Recording',
-              style: tt.titleLarge?.copyWith(color: Colors.red.shade400),
+    return Padding(
+      padding: UiTokens.pagePadding,
+      child: Column(
+        children: [
+          // ── Top: pulsing dot, timer, waveform ──────────
+          _PulsingDot(color: Colors.red.shade400),
+          const SizedBox(height: 8),
+          Text(
+            'Recording',
+            style: tt.titleMedium?.copyWith(color: Colors.red.shade400),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatTime(widget.seconds),
+            style: tt.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w300,
+              fontFeatures: [const FontFeature.tabularFigures()],
             ),
+          ),
+          const SizedBox(height: 16),
 
-            const SizedBox(height: 8),
-
-            Text(
-              _formatTime(seconds),
-              style: tt.displaySmall?.copyWith(
-                fontWeight: FontWeight.w300,
-                fontFeatures: [const FontFeature.tabularFigures()],
+          // Waveform
+          SizedBox(
+            height: 64,
+            child: CustomPaint(
+              size: const Size(double.infinity, 64),
+              painter: _WaveformPainter(
+                bars: _bars,
+                headIndex: _barIndex,
+                color: cs.primary,
+                inactiveColor: cs.primary.withOpacity(0.15),
               ),
             ),
+          ),
 
-            const SizedBox(height: 48),
+          const SizedBox(height: 16),
 
-            // Stop button
-            GestureDetector(
-              onTap: () {
-                context.read<V2SessionBloc>().add(const V2RecordingStopped());
-              },
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.error,
+          // ── Live transcript area ───────────────────────
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: cs.outline.withOpacity(0.12),
                 ),
-                child: const Icon(
-                  Icons.stop_rounded,
-                  size: 40,
-                  color: Colors.white,
+              ),
+              child: ShaderMask(
+                shaderCallback: (Rect bounds) {
+                  return LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black,
+                      Colors.black,
+                    ],
+                    stops: const [0.0, 0.06, 1.0],
+                  ).createShader(bounds);
+                },
+                blendMode: BlendMode.dstIn,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: hasTranscript
+                      ? Text(
+                          widget.liveTranscript!,
+                          style: tt.bodyMedium?.copyWith(
+                            height: 1.6,
+                            color: cs.onSurface.withOpacity(0.85),
+                          ),
+                        )
+                      : Text(
+                          'Listening...',
+                          style: tt.bodyMedium?.copyWith(
+                            height: 1.6,
+                            color: cs.onSurface.withOpacity(0.3),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
                 ),
               ),
             ),
+          ),
 
-            const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-            Text(
-              'Tap to stop',
-              style: tt.bodyMedium?.copyWith(
-                color: cs.onSurface.withOpacity(0.5),
+          // ── Stop button ────────────────────────────────
+          GestureDetector(
+            onTap: () {
+              context.read<V2SessionBloc>().add(const V2RecordingStopped());
+            },
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: cs.error,
+                boxShadow: [
+                  BoxShadow(
+                    color: cs.error.withOpacity(0.3),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.stop_rounded,
+                size: 36,
+                color: Colors.white,
               ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tap to stop',
+            style: tt.bodySmall?.copyWith(
+              color: cs.onSurface.withOpacity(0.5),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
       ),
     );
   }
+}
+
+/// Draws a rolling-bar waveform visualisation.
+class _WaveformPainter extends CustomPainter {
+  final List<double> bars;
+  final int headIndex;
+  final Color color;
+  final Color inactiveColor;
+
+  _WaveformPainter({
+    required this.bars,
+    required this.headIndex,
+    required this.color,
+    required this.inactiveColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final barCount = bars.length;
+    final barWidth = size.width / barCount;
+    final gap = 2.0;
+    final usableBarWidth = barWidth - gap;
+    if (usableBarWidth <= 0) return;
+
+    final midY = size.height / 2;
+    final maxHalf = size.height / 2 - 2;
+
+    for (var i = 0; i < barCount; i++) {
+      // Draw oldest → newest left to right
+      final dataIndex = (headIndex - barCount + i) % barCount;
+      final amplitude = bars[dataIndex < 0 ? dataIndex + barCount : dataIndex];
+
+      // Minimum visible bar height
+      final barHalf = math.max(amplitude * maxHalf, 1.5);
+
+      final x = i * barWidth + gap / 2;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTRB(x, midY - barHalf, x + usableBarWidth, midY + barHalf),
+        const Radius.circular(2),
+      );
+
+      // Fade out older bars
+      final age = (barCount - i) / barCount; // 1.0 = oldest, 0.0 = newest
+      final opacity = (1.0 - age * 0.6).clamp(0.4, 1.0);
+
+      final paint = Paint()
+        ..color = amplitude > 0.02
+            ? color.withOpacity(opacity)
+            : inactiveColor;
+
+      canvas.drawRRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaveformPainter oldDelegate) => true;
 }
 
 // ── Processing View ────────────────────────────────────────────────
@@ -727,8 +967,6 @@ class _ScoreCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               reasoning,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
               style: tt.bodySmall?.copyWith(
                 color: cs.onSurface.withOpacity(0.65),
                 height: 1.4,

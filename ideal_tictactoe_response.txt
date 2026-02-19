@@ -1,0 +1,149 @@
+Here is a Pygame implementation of a Tic Tac Toe game with exact dimensions of 400x500. The top 400x400 area is the game board, and the bottom 400x100 area is the status bar that always shows whose turn it is, or the win/draw result. When a player wins, a red line crosses through the centers of the three winning marks, the game pauses for 10 seconds, then restarts. On a draw, it also pauses for 10 seconds and resets.
+
+```python
+import pygame
+import sys
+
+pygame.init()
+
+WIDTH = 400
+HEIGHT = 400
+STATUS_HEIGHT = 100
+CELL_SIZE = WIDTH // 3
+
+BACKGROUND = (255, 255, 255)
+LINE_COLOR = (0, 0, 0)
+RED = (255, 0, 0)
+STATUS_BG = (0, 0, 0)
+STATUS_TEXT_COLOR = (255, 255, 255)
+
+screen = pygame.display.set_mode((WIDTH, HEIGHT + STATUS_HEIGHT))
+pygame.display.set_caption("Tic Tac Toe")
+clock = pygame.time.Clock()
+font = pygame.font.Font(None, 36)
+
+
+def cell_center(row, col):
+    """Returns the pixel center of a given grid cell."""
+    cx = col * CELL_SIZE + CELL_SIZE // 2
+    cy = row * CELL_SIZE + CELL_SIZE // 2
+    return (cx, cy)
+
+
+def draw_board(grid):
+    """Draws the grid lines and all placed X's and O's."""
+    screen.fill(BACKGROUND)
+    for i in range(1, 3):
+        pygame.draw.line(screen, LINE_COLOR, (i * CELL_SIZE, 0), (i * CELL_SIZE, HEIGHT), 4)
+        pygame.draw.line(screen, LINE_COLOR, (0, i * CELL_SIZE), (WIDTH, i * CELL_SIZE), 4)
+
+    margin = 20
+    for row in range(3):
+        for col in range(3):
+            cx, cy = cell_center(row, col)
+            if grid[row][col] == 'X':
+                half = CELL_SIZE // 2 - margin
+                pygame.draw.line(screen, LINE_COLOR, (cx - half, cy - half), (cx + half, cy + half), 4)
+                pygame.draw.line(screen, LINE_COLOR, (cx - half, cy + half), (cx + half, cy - half), 4)
+            elif grid[row][col] == 'O':
+                radius = CELL_SIZE // 2 - margin
+                pygame.draw.circle(screen, LINE_COLOR, (cx, cy), radius, 4)
+
+
+def draw_status(message):
+    """Draws the status bar at the bottom of the screen."""
+    pygame.draw.rect(screen, STATUS_BG, (0, HEIGHT, WIDTH, STATUS_HEIGHT))
+    text = font.render(message, True, STATUS_TEXT_COLOR)
+    text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT + STATUS_HEIGHT // 2))
+    screen.blit(text, text_rect)
+
+
+def check_winner(grid):
+    """Checks for a winner. Returns ('X' or 'O', list of 3 winning cells) or (None, None)."""
+    lines = []
+    for row in range(3):
+        lines.append([(row, 0), (row, 1), (row, 2)])
+    for col in range(3):
+        lines.append([(0, col), (1, col), (2, col)])
+    lines.append([(0, 0), (1, 1), (2, 2)])
+    lines.append([(0, 2), (1, 1), (2, 0)])
+
+    for line in lines:
+        vals = [grid[r][c] for r, c in line]
+        if vals[0] is not None and vals[0] == vals[1] == vals[2]:
+            return vals[0], line
+    return None, None
+
+
+def is_draw(grid):
+    """Returns True if all cells are filled and there is no winner."""
+    return all(grid[r][c] is not None for r in range(3) for c in range(3))
+
+
+def draw_winning_line(winning_cells):
+    """Draws a red line through the centers of the three winning cells."""
+    start = cell_center(winning_cells[0][0], winning_cells[0][1])
+    end = cell_center(winning_cells[2][0], winning_cells[2][1])
+    pygame.draw.line(screen, RED, start, end, 6)
+
+
+def main():
+    grid = [[None]*3 for _ in range(3)]
+    current_player = 'X'
+    winner = None
+    winning_cells = None
+    game_over = False
+    pause_start = None
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            if event.type == pygame.MOUSEBUTTONDOWN and not game_over:
+                x, y = event.pos
+                if y < HEIGHT:
+                    col = x // CELL_SIZE
+                    row = y // CELL_SIZE
+                    if grid[row][col] is None:
+                        grid[row][col] = current_player
+                        winner, winning_cells = check_winner(grid)
+                        if winner:
+                            game_over = True
+                            pause_start = pygame.time.get_ticks()
+                        elif is_draw(grid):
+                            game_over = True
+                            pause_start = pygame.time.get_ticks()
+                        else:
+                            current_player = 'O' if current_player == 'X' else 'X'
+
+        draw_board(grid)
+
+        if winner:
+            draw_winning_line(winning_cells)
+            draw_status(f"{winner} wins!")
+        elif game_over:
+            draw_status("Game Draw!")
+        else:
+            draw_status(f"{current_player}'s Turn")
+
+        pygame.display.update()
+
+        if game_over and pause_start is not None:
+            if pygame.time.get_ticks() - pause_start >= 10000:
+                grid = [[None]*3 for _ in range(3)]
+                current_player = 'X'
+                winner = None
+                winning_cells = None
+                game_over = False
+                pause_start = None
+
+        clock.tick(30)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+To run the game, make sure you have pygame installed (`pip install pygame`), then run the script with `python script_name.py`. X always goes first. Click on any empty cell to place your mark. The status bar at the bottom always shows whose turn it is, or the result. After a win or draw, the game pauses for 10 seconds and then automatically restarts.

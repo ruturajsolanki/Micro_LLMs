@@ -24,6 +24,7 @@ import '../../data/services/groq_api_service.dart';
 import '../../data/services/gemini_api_service.dart';
 import '../../data/services/cloud_api_key_storage.dart';
 import '../../data/services/cloud_connectivity_checker.dart';
+import '../../data/services/deepgram_streaming_service.dart';
 import '../../domain/repositories/llm_repository.dart';
 import '../../domain/repositories/voice_repository.dart';
 import '../../domain/repositories/settings_repository.dart';
@@ -195,6 +196,9 @@ Future<void> initializeDependencies() async {
     ),
   );
   sl.registerLazySingleton(() => AudioRecorderService());
+  sl.registerLazySingleton(
+    () => DeepgramStreamingService(keyStorage: sl()),
+  );
 
   // Cloud LLM repository (used by V2 flow)
   sl.registerLazySingleton(
@@ -345,6 +349,7 @@ Future<void> initializeDependencies() async {
       audioRecorder: sl(),
       promptManager: sl(),
       sessionStorage: sl(),
+      deepgramService: sl(),
     ),
   );
   

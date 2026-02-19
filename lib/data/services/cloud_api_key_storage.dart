@@ -11,6 +11,7 @@ import '../../core/utils/logger.dart';
 class CloudApiKeyStorage {
   static const String _groqKeyName = 'cloud_groq_api_key';
   static const String _geminiKeyName = 'cloud_gemini_api_key';
+  static const String _deepgramKeyName = 'cloud_deepgram_api_key';
 
   /// Built-in Groq API key used out-of-the-box.
   static const String _defaultGroqKey =
@@ -89,6 +90,25 @@ class CloudApiKeyStorage {
   Future<bool> hasGeminiApiKey() async {
     final key = await getGeminiApiKey();
     return key != null && key.isNotEmpty;
+  }
+
+  // ── Deepgram ─────────────────────────────────────────────────────
+
+  Future<String?> getDeepgramApiKey() async {
+    try {
+      return await _secureStorage.read(key: _deepgramKeyName);
+    } catch (e) {
+      AppLogger.e('CloudApiKeyStorage: failed to read Deepgram key: $e');
+      return null;
+    }
+  }
+
+  Future<void> setDeepgramApiKey(String apiKey) async {
+    await _secureStorage.write(key: _deepgramKeyName, value: apiKey);
+  }
+
+  Future<void> deleteDeepgramApiKey() async {
+    await _secureStorage.delete(key: _deepgramKeyName);
   }
 
   // ── Convenience ───────────────────────────────────────────────────

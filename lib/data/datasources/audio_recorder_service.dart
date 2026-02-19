@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
@@ -7,6 +8,7 @@ import '../../core/utils/logger.dart';
 /// Records microphone audio to a WAV file on disk for cloud STT upload.
 ///
 /// Uses a platform channel to the native Android AudioRecord API.
+/// Also streams raw PCM audio chunks for real-time STT (Deepgram).
 class AudioRecorderService {
   static const _channel = MethodChannel('com.microllm.app/audio_recorder');
   static const _eventChannel =
@@ -14,6 +16,7 @@ class AudioRecorderService {
 
   StreamSubscription<dynamic>? _eventSub;
   final _rmsController = StreamController<double>.broadcast();
+  final _audioChunkController = StreamController<List<int>>.broadcast();
 
   bool _recording = false;
 
@@ -21,6 +24,9 @@ class AudioRecorderService {
 
   /// Stream of RMS dB levels during recording (for waveform UI).
   Stream<double> get rmsStream => _rmsController.stream;
+
+  /// Stream of raw PCM audio chunks for live STT streaming.
+  Stream<List<int>> get audioChunkStream => _audioChunkController.stream;
 
   /// Start recording microphone audio to a WAV file.
   ///
@@ -39,6 +45,13 @@ class AudioRecorderService {
           if (type == 'rms') {
             final rmsDb = (event['rmsDb'] as num?)?.toDouble() ?? -120.0;
             _rmsController.add(rmsDb);
+          } else if (type == 'audio') {
+            final data = event['data'];
+            if (data is Uint8List) {
+              _audioChunkController.add(data);
+            } else if (data is List) {
+              _audioChunkController.add(List<int>.from(data));
+            }
           }
         }
       },
@@ -80,5 +93,6 @@ class AudioRecorderService {
   void dispose() {
     _eventSub?.cancel();
     _rmsController.close();
+    _audioChunkController.close();
   }
 }

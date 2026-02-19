@@ -46,6 +46,7 @@ dependencies:
   shimmer: ^3.0.0
   just_audio: ^0.9.46
   file_picker: ^8.1.6
+  deepgram_speech_to_text: ^4.1.0
 
 dev_dependencies:
   flutter_test:

@@ -178,20 +178,37 @@ class GroqApiService {
       throw ArgumentError('Audio file not found: $audioFilePath');
     }
 
-    AppLogger.i('GroqApiService: transcribing ${file.lengthSync()} bytes '
+    // Read the entire file into memory first to avoid Content-Length
+    // mismatches caused by the WAV header rewrite race condition.
+    // This ensures the byte count Dio declares matches exactly
+    // what gets written to the request body.
+    final fileBytes = await file.readAsBytes();
+    final fileName = audioFilePath.split('/').last;
+
+    AppLogger.i('GroqApiService: transcribing ${fileBytes.length} bytes '
         'from $audioFilePath');
 
     final stopwatch = Stopwatch()..start();
 
+    // The prompt parameter guides Whisper's transcription style.
+    // It tells the model to preserve filler words and use proper punctuation,
+    // which is critical for the evaluation rubric (penalizes fillers, scores grammar).
+    const transcriptionPrompt =
+        'Um, uh, hmm, ah, like, you know, so, actually, basically, right, '
+        'I mean, well, okay. '
+        'Include all filler words, hesitations, and false starts exactly as spoken. '
+        'Use proper punctuation: commas, periods, question marks, exclamation marks.';
+
     final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(
-        audioFilePath,
-        filename: audioFilePath.split('/').last,
+      'file': MultipartFile.fromBytes(
+        fileBytes,
+        filename: fileName,
       ),
       'model': model ?? _defaultWhisperModel,
       if (language != null) 'language': language,
       'response_format': 'verbose_json',
       'temperature': 0.0,
+      'prompt': transcriptionPrompt,
     });
 
     final response = await _dio.post<Map<String, dynamic>>(

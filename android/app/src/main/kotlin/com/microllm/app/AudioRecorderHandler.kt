@@ -69,6 +69,12 @@ class AudioRecorderHandler(context: Context) : EventChannel.StreamHandler {
         mainHandler.post { eventSink?.success(event) }
     }
 
+    private fun emitAudio(pcmBytes: ByteArray) {
+        mainHandler.post {
+            eventSink?.success(mapOf("type" to "audio", "data" to pcmBytes))
+        }
+    }
+
     private fun postResult(result: MethodChannel.Result, block: (MethodChannel.Result) -> Unit) {
         mainHandler.post { block(result) }
     }
@@ -137,6 +143,10 @@ class AudioRecorderHandler(context: Context) : EventChannel.StreamHandler {
                         // Compute RMS for UI
                         val rmsDb = computeRmsDb(chunk, read)
                         emit(mapOf("type" to "rms", "rmsDb" to rmsDb))
+
+                        // Emit raw PCM chunk for live STT streaming
+                        val pcmCopy = chunk.copyOf(read)
+                        emitAudio(pcmCopy)
                     }
                 }
             } catch (e: Exception) {

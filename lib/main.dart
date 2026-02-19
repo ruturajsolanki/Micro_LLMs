@@ -130,7 +130,19 @@ class MicroLLMApp extends StatelessWidget {
         return MaterialPageRoute(
           builder: (_) => const V2HistoryPage(),
         );
-      
+
+      case '/v1-home':
+        return MaterialPageRoute(
+          builder: (_) => BlocBuilder<ModelBloc, ModelState>(
+            builder: (context, modelState) {
+              if (!modelState.isReady) {
+                return const OnboardingPage();
+              }
+              return const ChatPage();
+            },
+          ),
+        );
+
       case '/chat':
         return MaterialPageRoute(
           builder: (_) => const ChatPage(),

@@ -44,6 +44,9 @@ class V2SessionState extends Equatable {
   /// Transcribed text from STT.
   final String? transcript;
 
+  /// Live transcript from Deepgram (updates in real-time during recording).
+  final String? liveTranscript;
+
   /// Evaluation result (scores, feedback).
   final EvaluationResult? evaluationResult;
 
@@ -69,6 +72,7 @@ class V2SessionState extends Equatable {
     this.sttProvider = CloudSttProvider.groqWhisper,
     this.recordingSeconds = 0,
     this.transcript,
+    this.liveTranscript,
     this.evaluationResult,
     this.benchmarkResult,
     this.errorMessage,
@@ -84,6 +88,7 @@ class V2SessionState extends Equatable {
     CloudSttProvider? sttProvider,
     int? recordingSeconds,
     String? transcript,
+    String? liveTranscript,
     EvaluationResult? evaluationResult,
     BenchmarkResult? benchmarkResult,
     String? errorMessage,
@@ -98,6 +103,7 @@ class V2SessionState extends Equatable {
       sttProvider: sttProvider ?? this.sttProvider,
       recordingSeconds: recordingSeconds ?? this.recordingSeconds,
       transcript: transcript ?? this.transcript,
+      liveTranscript: liveTranscript ?? this.liveTranscript,
       evaluationResult: evaluationResult ?? this.evaluationResult,
       benchmarkResult: benchmarkResult ?? this.benchmarkResult,
       errorMessage: errorMessage ?? this.errorMessage,
@@ -115,6 +121,7 @@ class V2SessionState extends Equatable {
         sttProvider,
         recordingSeconds,
         transcript,
+        liveTranscript,
         evaluationResult,
         benchmarkResult,
         errorMessage,

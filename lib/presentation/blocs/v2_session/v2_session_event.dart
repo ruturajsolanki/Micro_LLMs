@@ -36,6 +36,15 @@ final class V2AudioFileSelected extends V2SessionEvent {
   List<Object?> get props => [filePath, fileName];
 }
 
+/// Live transcript updated from Deepgram streaming STT.
+final class V2LiveTranscriptUpdated extends V2SessionEvent {
+  final String text;
+  const V2LiveTranscriptUpdated(this.text);
+
+  @override
+  List<Object?> get props => [text];
+}
+
 /// Reset to initial state for a new session.
 final class V2SessionReset extends V2SessionEvent {
   const V2SessionReset();

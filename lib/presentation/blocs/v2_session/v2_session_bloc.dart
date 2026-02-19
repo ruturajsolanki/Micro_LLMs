@@ -12,6 +12,7 @@ import '../../../data/datasources/v2_session_storage.dart';
 import '../../../data/repositories/cloud_llm_repository_impl.dart';
 import '../../../data/services/cloud_api_key_storage.dart';
 import '../../../data/services/cloud_connectivity_checker.dart';
+import '../../../data/services/deepgram_streaming_service.dart';
 import '../../../data/services/groq_api_service.dart';
 import '../../../domain/entities/benchmark_result.dart';
 import '../../../domain/entities/cloud_provider.dart';
@@ -34,9 +35,12 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
   final AudioRecorderService _audioRecorder;
   final SystemPromptManager _promptManager;
   final V2SessionStorage _sessionStorage;
+  final DeepgramStreamingService _deepgramService;
 
   Timer? _timer;
   String? _currentAudioPath;
+  StreamSubscription<List<int>>? _audioChunkSub;
+  StreamSubscription<String>? _deepgramTranscriptSub;
 
   V2SessionBloc({
     required CloudConnectivityChecker connectivityChecker,
@@ -46,6 +50,7 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
     required AudioRecorderService audioRecorder,
     required SystemPromptManager promptManager,
     required V2SessionStorage sessionStorage,
+    required DeepgramStreamingService deepgramService,
   })  : _connectivityChecker = connectivityChecker,
         _keyStorage = keyStorage,
         _groqApi = groqApi,
@@ -53,11 +58,13 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
         _audioRecorder = audioRecorder,
         _promptManager = promptManager,
         _sessionStorage = sessionStorage,
+        _deepgramService = deepgramService,
         super(const V2SessionState()) {
     on<V2CloudCheckRequested>(_onCloudCheck);
     on<V2RecordingStarted>(_onRecordingStarted);
     on<V2RecordingStopped>(_onRecordingStopped);
     on<V2AudioFileSelected>(_onAudioFileSelected);
+    on<V2LiveTranscriptUpdated>(_onLiveTranscriptUpdated);
     on<V2SessionReset>(_onReset);
     on<V2TimerTicked>(_onTimerTicked);
   }
@@ -140,15 +147,58 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
         audioSource: 'mic',
         uploadedFileName: null,
         transcript: null,
+        liveTranscript: null,
         evaluationResult: null,
         benchmarkResult: null,
         errorMessage: null,
       ));
+
+      // Start Deepgram live transcription.
+      _startDeepgramStreaming();
     } catch (e) {
       emit(state.copyWith(
         status: V2SessionStatus.error,
         errorMessage: 'Failed to start recording: $e',
       ));
+    }
+  }
+
+  /// Start Deepgram WebSocket and pipe audio chunks into it.
+  void _startDeepgramStreaming() {
+    _deepgramService.start().then((_) {
+      // Listen for transcript updates from Deepgram.
+      _deepgramTranscriptSub =
+          _deepgramService.transcriptStream?.listen((text) {
+        add(V2LiveTranscriptUpdated(text));
+      });
+
+      // Pipe audio chunks from native recorder to Deepgram.
+      _audioChunkSub = _audioRecorder.audioChunkStream.listen((chunk) {
+        _deepgramService.addAudioData(chunk);
+      });
+
+      AppLogger.i('V2SessionBloc: Deepgram streaming started');
+    }).catchError((e) {
+      AppLogger.e('V2SessionBloc: failed to start Deepgram: $e');
+      // Non-fatal — recording continues without live transcript.
+    });
+  }
+
+  /// Stop Deepgram WebSocket and clean up subscriptions.
+  Future<void> _stopDeepgramStreaming() async {
+    await _audioChunkSub?.cancel();
+    _audioChunkSub = null;
+    await _deepgramTranscriptSub?.cancel();
+    _deepgramTranscriptSub = null;
+    await _deepgramService.stop();
+  }
+
+  void _onLiveTranscriptUpdated(
+    V2LiveTranscriptUpdated event,
+    Emitter<V2SessionState> emit,
+  ) {
+    if (state.status == V2SessionStatus.recording) {
+      emit(state.copyWith(liveTranscript: event.text));
     }
   }
 
@@ -170,6 +220,9 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
     _timer?.cancel();
     _timer = null;
 
+    // Stop Deepgram live transcription first.
+    await _stopDeepgramStreaming();
+
     final audioPath = await _audioRecorder.stopRecording();
     if (audioPath == null || _currentAudioPath == null) {
       emit(state.copyWith(
@@ -178,6 +231,25 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
       ));
       return;
     }
+
+    // Reject very short recordings (accidental tap).
+    if (state.recordingSeconds < 3) {
+      emit(state.copyWith(
+        status: V2SessionStatus.error,
+        errorMessage:
+            'Recording too short (${state.recordingSeconds}s). '
+            'Please speak for at least a few seconds.',
+      ));
+      // Clean up the temp file.
+      try {
+        final f = File(_currentAudioPath!);
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+      return;
+    }
+
+    // Allow WAV header rewrite to fully flush to disk.
+    await Future<void>.delayed(const Duration(milliseconds: 200));
 
     await _processAudioFile(
       emit: emit,
@@ -198,6 +270,7 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
       uploadedFileName: event.fileName,
       recordingSeconds: 0,
       transcript: null,
+      liveTranscript: null,
       evaluationResult: null,
       benchmarkResult: null,
       errorMessage: null,
@@ -279,10 +352,17 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
       return;
     }
 
-    if (transcript.isEmpty) {
+    // ── Reject if no meaningful speech was detected ──────────────────
+    final wordCount =
+        transcript.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+
+    if (transcript.isEmpty || wordCount < 3) {
       emit(state.copyWith(
         status: V2SessionStatus.error,
-        errorMessage: 'No speech detected in the audio.',
+        errorMessage: transcript.isEmpty
+            ? 'No speech detected in the audio.'
+            : 'Too few words detected ($wordCount). '
+                'Please speak for at least a few sentences.',
       ));
       return;
     }
@@ -354,6 +434,15 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
         processingStep: null,
       ));
 
+      // ── Persist audio file ──────────────────────────────────────────
+      String? savedAudioPath;
+      try {
+        savedAudioPath =
+            await _persistAudioFile(audioFilePath, audioSource);
+      } catch (e) {
+        AppLogger.w('V2SessionBloc: could not save audio: $e');
+      }
+
       // ── Save to history ────────────────────────────────────────────
       _saveToHistory(
         evalResult: evalResult,
@@ -362,6 +451,7 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
         processingTimeMs: processingTimeMs,
         audioSource: audioSource,
         uploadedFileName: uploadedFileName,
+        audioFilePath: savedAudioPath,
       );
     } catch (e, stack) {
       AppLogger.e('V2SessionBloc: evaluation error: $e\n$stack');
@@ -369,14 +459,6 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
         status: V2SessionStatus.error,
         errorMessage: 'Evaluation failed: $e',
       ));
-    }
-
-    // Clean up mic recording (keep uploaded files untouched)
-    if (audioSource == 'mic') {
-      try {
-        final f = File(audioFilePath);
-        if (f.existsSync()) f.deleteSync();
-      } catch (_) {}
     }
   }
 
@@ -389,6 +471,7 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
     required int processingTimeMs,
     required String audioSource,
     String? uploadedFileName,
+    String? audioFilePath,
   }) {
     try {
       final record = V2SessionRecord(
@@ -408,6 +491,7 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
         sttProvider: state.sttProvider.id,
         audioSource: audioSource,
         uploadedFileName: uploadedFileName,
+        audioFilePath: audioFilePath,
       );
       _sessionStorage.save(record);
     } catch (e) {
@@ -415,14 +499,51 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
     }
   }
 
+  /// Copy audio to a persistent app directory so it survives temp cleanup.
+  Future<String?> _persistAudioFile(
+    String sourcePath,
+    String audioSource,
+  ) async {
+    final sourceFile = File(sourcePath);
+    if (!sourceFile.existsSync()) return null;
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final audioDir = Directory('${appDir.path}/v2_recordings');
+    if (!audioDir.existsSync()) {
+      audioDir.createSync(recursive: true);
+    }
+
+    final ext = sourcePath.split('.').last;
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final destPath = '${audioDir.path}/session_$timestamp.$ext';
+
+    if (audioSource == 'mic') {
+      // Move (rename) temp file to persistent dir — faster than copy.
+      try {
+        final moved = await sourceFile.rename(destPath);
+        return moved.path;
+      } catch (_) {
+        // rename fails across filesystems; fall back to copy + delete.
+        final copied = await sourceFile.copy(destPath);
+        await sourceFile.delete();
+        return copied.path;
+      }
+    } else {
+      // For uploaded files, copy so we don't remove the user's original.
+      final copied = await sourceFile.copy(destPath);
+      return copied.path;
+    }
+  }
+
   // ── Reset ───────────────────────────────────────────────────────
 
-  void _onReset(
+  Future<void> _onReset(
     V2SessionReset event,
     Emitter<V2SessionState> emit,
-  ) {
+  ) async {
     _timer?.cancel();
     _timer = null;
+    await _stopDeepgramStreaming();
     _audioRecorder.cancelRecording();
     emit(const V2SessionState(
         status: V2SessionStatus.ready, cloudReady: true));
@@ -478,6 +599,7 @@ class V2SessionBloc extends Bloc<V2SessionEvent, V2SessionState> {
   @override
   Future<void> close() {
     _timer?.cancel();
+    _stopDeepgramStreaming();
     return super.close();
   }
 }

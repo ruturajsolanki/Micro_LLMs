@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../../core/di/injection.dart';
 import '../../data/datasources/v2_session_storage.dart';
@@ -179,21 +182,18 @@ class _SummaryBar extends StatelessWidget {
             value: '${records.length}',
             icon: Icons.history,
           ),
-          const SizedBox(width: UiTokens.s12),
           _StatChip(
             label: 'Avg Score',
             value: '${avgTotal.toStringAsFixed(1)}/20',
             icon: Icons.trending_up,
           ),
-          const SizedBox(width: UiTokens.s12),
           _StatChip(
-            label: 'Avg Clarity',
+            label: 'Clarity',
             value: avgClarity.toStringAsFixed(1),
             icon: Icons.lightbulb_outline,
           ),
-          const SizedBox(width: UiTokens.s12),
           _StatChip(
-            label: 'Avg Language',
+            label: 'Language',
             value: avgLanguage.toStringAsFixed(1),
             icon: Icons.abc_rounded,
           ),
@@ -334,7 +334,8 @@ class _SessionCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     // Metadata row
                     Wrap(
-                      spacing: 12,
+                      spacing: 8,
+                      runSpacing: 2,
                       children: [
                         _MetaTag(
                           icon: Icons.timer_outlined,
@@ -354,17 +355,23 @@ class _SessionCard extends StatelessWidget {
                     // Score breakdown
                     Row(
                       children: [
-                        Text(
-                          'Clarity ${record.clarityScore.toStringAsFixed(1)}',
-                          style: tt.labelSmall?.copyWith(
-                            color: cs.primary,
+                        Flexible(
+                          child: Text(
+                            'C ${record.clarityScore.toStringAsFixed(1)}',
+                            overflow: TextOverflow.ellipsis,
+                            style: tt.labelSmall?.copyWith(
+                              color: cs.primary,
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Language ${record.languageScore.toStringAsFixed(1)}',
-                          style: tt.labelSmall?.copyWith(
-                            color: Colors.teal,
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'L ${record.languageScore.toStringAsFixed(1)}',
+                            overflow: TextOverflow.ellipsis,
+                            style: tt.labelSmall?.copyWith(
+                              color: Colors.teal,
+                            ),
                           ),
                         ),
                         const Spacer(),
@@ -440,14 +447,43 @@ class _MetaTag extends StatelessWidget {
 
 // ── Session Detail Page ────────────────────────────────────────────
 
-class _SessionDetailPage extends StatelessWidget {
+class _SessionDetailPage extends StatefulWidget {
   final V2SessionRecord record;
   const _SessionDetailPage({required this.record});
+
+  @override
+  State<_SessionDetailPage> createState() => _SessionDetailPageState();
+}
+
+class _SessionDetailPageState extends State<_SessionDetailPage> {
+  AudioPlayer? _player;
+  bool _audioAvailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAudio();
+  }
+
+  void _checkAudio() {
+    final path = widget.record.audioFilePath;
+    if (path != null && path.isNotEmpty && File(path).existsSync()) {
+      _audioAvailable = true;
+      _player = AudioPlayer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final record = widget.record;
 
     return Scaffold(
       appBar: AppBar(
@@ -458,6 +494,16 @@ class _SessionDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Audio Player ──────────────────────────────────
+            if (_audioAvailable) ...[
+              _AudioPlayerCard(
+                player: _player!,
+                audioPath: record.audioFilePath!,
+                duration: record.recordingDurationSeconds,
+              ),
+              const SizedBox(height: UiTokens.s12),
+            ],
+
             // ── Meta row ────────────────────────────────────
             Card(
               child: Padding(
@@ -503,26 +549,18 @@ class _SessionDetailPage extends StatelessWidget {
 
             // ── Scores ──────────────────────────────────────
             if (!record.safetyFlag) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: _ScoreBlock(
-                      title: 'Clarity of Thought',
-                      score: record.clarityScore,
-                      reasoning: record.clarityReasoning,
-                      color: cs.primary,
-                    ),
-                  ),
-                  const SizedBox(width: UiTokens.s12),
-                  Expanded(
-                    child: _ScoreBlock(
-                      title: 'Language Proficiency',
-                      score: record.languageScore,
-                      reasoning: record.languageReasoning,
-                      color: Colors.teal,
-                    ),
-                  ),
-                ],
+              _ScoreBlock(
+                title: 'Clarity of Thought',
+                score: record.clarityScore,
+                reasoning: record.clarityReasoning,
+                color: cs.primary,
+              ),
+              const SizedBox(height: UiTokens.s8),
+              _ScoreBlock(
+                title: 'Language Proficiency',
+                score: record.languageScore,
+                reasoning: record.languageReasoning,
+                color: Colors.teal,
               ),
 
               const SizedBox(height: UiTokens.s12),
@@ -667,6 +705,172 @@ class _SessionDetailPage extends StatelessWidget {
   }
 }
 
+// ── Audio Player Card ──────────────────────────────────────────────
+
+class _AudioPlayerCard extends StatefulWidget {
+  final AudioPlayer player;
+  final String audioPath;
+  final int duration;
+
+  const _AudioPlayerCard({
+    required this.player,
+    required this.audioPath,
+    required this.duration,
+  });
+
+  @override
+  State<_AudioPlayerCard> createState() => _AudioPlayerCardState();
+}
+
+class _AudioPlayerCardState extends State<_AudioPlayerCard> {
+  bool _loaded = false;
+  Duration _position = Duration.zero;
+  Duration _totalDuration = Duration.zero;
+  bool _playing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final dur = await widget.player.setFilePath(widget.audioPath);
+      if (dur != null && mounted) {
+        setState(() {
+          _totalDuration = dur;
+          _loaded = true;
+        });
+      }
+    } catch (e) {
+      // File might be corrupt or unsupported.
+      if (mounted) setState(() => _loaded = false);
+    }
+
+    widget.player.positionStream.listen((pos) {
+      if (mounted) setState(() => _position = pos);
+    });
+
+    widget.player.playerStateStream.listen((state) {
+      if (!mounted) return;
+      setState(() => _playing = state.playing);
+      if (state.processingState == ProcessingState.completed) {
+        widget.player.seek(Duration.zero);
+        widget.player.pause();
+      }
+    });
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    if (!_loaded) {
+      return const SizedBox.shrink();
+    }
+
+    final maxMs = _totalDuration.inMilliseconds.toDouble();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UiTokens.s16,
+          vertical: UiTokens.s12,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.headphones_rounded,
+                    size: 18, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Playback',
+                  style: tt.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                // Play / pause button
+                IconButton(
+                  onPressed: () {
+                    if (_playing) {
+                      widget.player.pause();
+                    } else {
+                      widget.player.play();
+                    }
+                  },
+                  icon: Icon(
+                    _playing
+                        ? Icons.pause_circle_filled
+                        : Icons.play_circle_filled,
+                    size: 40,
+                    color: cs.primary,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Seek bar
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 3,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 6,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 14,
+                      ),
+                      activeTrackColor: cs.primary,
+                      inactiveTrackColor: cs.primary.withOpacity(0.15),
+                      thumbColor: cs.primary,
+                    ),
+                    child: Slider(
+                      value: _position.inMilliseconds
+                          .toDouble()
+                          .clamp(0, maxMs),
+                      max: maxMs > 0 ? maxMs : 1,
+                      onChanged: (v) {
+                        widget.player
+                            .seek(Duration(milliseconds: v.toInt()));
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // Time label
+                Text(
+                  '${_fmt(_position)} / ${_fmt(_totalDuration)}',
+                  style: tt.labelSmall?.copyWith(
+                    color: cs.onSurface.withOpacity(0.5),
+                    fontFeatures: [const FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
@@ -734,8 +938,6 @@ class _ScoreBlock extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               reasoning,
-              maxLines: 5,
-              overflow: TextOverflow.ellipsis,
               style: tt.bodySmall?.copyWith(
                 color: cs.onSurface.withOpacity(0.6),
                 height: 1.4,

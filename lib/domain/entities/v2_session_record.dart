@@ -60,6 +60,9 @@ class V2SessionRecord extends Equatable {
   /// Original filename if audio was uploaded (null for mic recordings).
   final String? uploadedFileName;
 
+  /// Path to the saved audio file on disk (null if file was cleaned up).
+  final String? audioFilePath;
+
   const V2SessionRecord({
     required this.id,
     required this.completedAt,
@@ -77,6 +80,7 @@ class V2SessionRecord extends Equatable {
     required this.sttProvider,
     this.audioSource = 'mic',
     this.uploadedFileName,
+    this.audioFilePath,
   });
 
   /// Qualitative label from total score.
@@ -119,6 +123,7 @@ class V2SessionRecord extends Equatable {
       'sttProvider': sttProvider,
       'audioSource': audioSource,
       'uploadedFileName': uploadedFileName,
+      'audioFilePath': audioFilePath,
     };
   }
 
@@ -145,6 +150,7 @@ class V2SessionRecord extends Equatable {
       sttProvider: map['sttProvider'] as String? ?? 'groq_whisper',
       audioSource: map['audioSource'] as String? ?? 'mic',
       uploadedFileName: map['uploadedFileName'] as String?,
+      audioFilePath: map['audioFilePath'] as String?,
     );
   }
 
@@ -159,5 +165,6 @@ class V2SessionRecord extends Equatable {
         safetyFlag,
         transcript,
         audioSource,
+        audioFilePath,
       ];
 }
